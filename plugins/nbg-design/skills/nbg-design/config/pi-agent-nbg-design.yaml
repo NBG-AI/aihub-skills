@@ -53,6 +53,7 @@ presentation_workflow:
     - "If no deck language is specified, assume English (`en`)."
     - "If no final output format is specified, assume HTML (`html`)."
     - "For HTML presentation output, preserve a 16:9 NBG slide composition while fitting the complete slide inside the browser viewport."
+    - "Always render the NBG logo from the bundled lockup image, never as text, initials, a colored box, or a CSS/SVG re-creation. For HTML, embed it as a base64 data URI from NBG-Design/assets/logo-<variant>.datauri.txt (primary on light, knockout on dark, small for footers) so it renders in a standalone file; for PPTX, insert the logo-<variant>.png as a picture object."
     - "Before delivering generated HTML slides, render screenshots and visually inspect them for clipping, overflow, unintended element overlap, unreadable text, and NBG design alignment."
     - "For HTML presentation layouts, reserve non-overlapping zones for title/header, body content, card grids/rows, bottom callouts, footer, logo, and page-number elements; revise or split slides whenever content cannot fit safely."
     - "When asked to convert an HTML page to a PowerPoint presentation slide, recreate the slide with native editable PowerPoint shapes, text boxes, fonts, fills, borders, charts, and layout objects; do not capture the HTML content and use it as a slide image."

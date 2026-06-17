@@ -42,7 +42,7 @@ Do not create any other fallback configuration values unless the user explicitly
 - Use the NBG Presentation Design System; do not invent a parallel brand or visual system.
 - Preserve the NBG 16:9 / 1920×1080 internal slide composition.
 - Use the NBG teal-led palette, quiet neutrals, generous whitespace, clear hierarchy, and restrained emphasis.
-- Use NBG logos and bundled photography from `NBG-Design/assets/`.
+- Use NBG logos and bundled photography from `NBG-Design/assets/`. The NBG logo must always be the bundled lockup image — never a text label, initials, a colored square/box, or any CSS/SVG re-creation. See "Logo rendering (MANDATORY)".
 - Treat bundled screenshots as visual references, not as source code.
 - Start decks with an NBG-style cover slide.
 - Use divider slides for major sections.
@@ -65,6 +65,22 @@ For HTML slide or presentation output:
 - Reserve non-overlapping layout zones for the title/header, main body, card grids/rows, bottom callouts, and footer/logo area. Keep at least 32px internal artboard spacing between adjacent content groups, and at least 72px clearance above footer/page-number elements unless the template defines a larger safe area.
 - When content does not fit without overlap, reduce copy, resize or simplify components, change the grid/row structure, or split the content across additional slides. Do not hide overflow, stack opaque elements on top of content, or rely on z-index as a workaround for a crowded layout.
 - Treat the current `agentic-engineering-nbg-executive-presentation.html` slides 2 and 3 overlap pattern as a regression example: independently positioned card/callout rows must be checked against each other before delivery.
+
+## Logo rendering (MANDATORY)
+
+The NBG logo is a brand asset and must be reproduced exactly from the bundled image. Do **not** approximate it.
+
+- **Never** substitute the logo with text (e.g. a "National Bank of Greece" label), initials, a single letter, a colored square/rounded box, an emoji, or any hand-built CSS/SVG mark. A deck that renders the logo as anything other than the bundled lockup image is incorrect and must be fixed before delivery.
+- **For HTML output, embed the logo as a base64 `data:` URI so it always renders in a standalone file** (when the `.html` is moved, emailed, or opened directly). Do **not** reference the logo by a relative or absolute file path in delivered HTML — a path that cannot be resolved when the file is opened on its own is the most common cause of a missing/incorrect logo.
+  - The ready-to-paste data URIs are bundled next to the images:
+    - `NBG-Design/assets/logo-primary.datauri.txt` — full-color lockup, for **light** backgrounds.
+    - `NBG-Design/assets/logo-knockout.datauri.txt` — white/knockout lockup, for **dark** backgrounds.
+    - `NBG-Design/assets/logo-small.datauri.txt` — compact wordmark, for footers/tight spaces.
+  - Read the appropriate `*.datauri.txt` file and use its entire contents as the `src`, e.g. `<img src="data:image/png;base64,..." alt="National Bank of Greece" style="height:56px;width:auto;display:block;" />`.
+  - To avoid repeating a large data URI on every slide, define it once (a CSS custom property such as `--nbg-logo`, a single reusable element/component, or a shared JS const) and reference it from each slide's logo/footer zone.
+- **Choose the variant by background:** primary on light, knockout on dark, small for footers/compact placements. Preserve the logo's native aspect ratio (set `height` and let `width:auto`); never stretch or distort it.
+- **For PPTX output**, insert the actual `NBG-Design/assets/logo-*.png` image as a picture object; do not re-draw the logo with shapes or text.
+- Before delivery, confirm the rendered output contains the real NBG lockup image (verify an `<img>`/picture sourced from the bundled logo exists where a logo is expected), not a text or CSS placeholder.
 
 ## HTML-to-PowerPoint conversion guardrails
 
@@ -97,9 +113,9 @@ Design-system files:
 
 Assets:
 
-- `NBG-Design/assets/logo-primary.png`
-- `NBG-Design/assets/logo-knockout.png`
-- `NBG-Design/assets/logo-small.png`
+- `NBG-Design/assets/logo-primary.png` (+ `logo-primary.datauri.txt` — base64 data URI for HTML embedding)
+- `NBG-Design/assets/logo-knockout.png` (+ `logo-knockout.datauri.txt` — base64 data URI for HTML embedding)
+- `NBG-Design/assets/logo-small.png` (+ `logo-small.datauri.txt` — base64 data URI for HTML embedding)
 - `NBG-Design/assets/photo-fields.jpeg`
 - `NBG-Design/assets/photo-heart.jpeg`
 - `NBG-Design/assets/photo-parthenon.jpeg`
