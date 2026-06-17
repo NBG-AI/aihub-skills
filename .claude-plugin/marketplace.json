@@ -1,0 +1,28 @@
+{
+  "name": "aihub-skills",
+  "owner": {
+    "name": "Giorgos Marinos",
+    "email": "giorgos.marinos@gmail.com"
+  },
+  "metadata": {
+    "description": "AIHub Skills - Claude Code plugin marketplace",
+    "version": "1.0.0",
+    "pluginRoot": "./plugins"
+  },
+  "plugins": [
+    {
+      "name": "nbg-design",
+      "source": "./plugins/nbg-design",
+      "description": "Use when creating National Bank of Greece (NBG) styled presentations, HTML slides, slide specifications, or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Giorgos Marinos"
+      },
+      "license": "MIT",
+      "keywords": [
+        "nbg",
+        "design"
+      ]
+    }
+  ]
+}

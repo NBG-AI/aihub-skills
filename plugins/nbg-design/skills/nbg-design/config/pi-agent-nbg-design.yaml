@@ -1,0 +1,290 @@
+# Pi Agent skill-bundled presentation context config for the NBG Presentation Design System.
+#
+# Important: Pi skills are loaded on demand through SKILL.md. This YAML is bundled
+# as reference context inside the user-level `nbg-design` skill. It is not Pi
+# native settings, and it is not intended to require the original project root.
+#
+# Resolve all bundled paths relative to the skill root directory that contains
+# SKILL.md, for example `NBG-Design/NBG Design System.html`.
+# No secrets, API keys, or expiring credentials are stored here.
+
+schema_version: "pi-presentation-context/v1"
+config_name: "nbg-design-presentation-generation"
+config_status: "ready_as_skill_bundled_context_file"
+
+project:
+  name: "nbg-design-user-skill"
+  paths_relative_to: "skill_root"
+  root_resolution: "Resolve bundled files relative to the directory containing this skill's SKILL.md, not the shell current working directory or original project root."
+  path_policy: "skill_relative_paths_only_for_bundled_files"
+  naming_note: >-
+    The user referred to an "NPG Design" folder. Local project evidence found
+    `NBG-Design/` and no `NPG Design/` folder. This config intentionally uses
+    `NBG-Design/`, the available National Bank of Greece design-system folder.
+
+pi_runtime:
+  native_settings_format: "json"
+  native_project_settings_path: "not_applicable_for_user_level_skill"
+  yaml_usage: "reference_context_loaded_from_the_user_level_skill_folder"
+  required_working_directory: "any"
+  at_file_path_resolution: "Do not rely on relative @file inclusion from arbitrary working directories; use the loaded skill and resolve bundled paths from the skill root."
+  recommended_command_template: |-
+    pi /skill:nbg-design "Create a presentation about <topic> for <audience> with <slide count/depth>."
+  print_mode_command_template: |-
+    pi -p /skill:nbg-design "Create a presentation outline or slide specification about <topic> for <audience> with <slide count/depth>."
+  required_credentials:
+    storage: "environment_or_pi_login_only"
+    do_not_store_in_this_file:
+      - "ANTHROPIC_API_KEY"
+      - "OPENAI_API_KEY"
+      - "GOOGLE_API_KEY"
+      - "AZURE_OPENAI_API_KEY"
+      - "AZURE_AI_INFERENCE_API_KEY"
+
+presentation_workflow:
+  objective: >-
+    Generate presentation content, slide structure, and implementation guidance
+    that follows the local NBG presentation design system.
+  expected_agent_behavior:
+    - "Read this YAML config before proposing or generating slides."
+    - "Inspect the referenced design-system documentation and templates before writing final slide output."
+    - "Use NBG presentation assets and templates; do not invent a parallel design system."
+    - "Ask for missing presentation-specific inputs instead of substituting fallback values, except for the explicit defaults defined in this file."
+    - "If no deck language is specified, assume English (`en`)."
+    - "If no final output format is specified, assume HTML (`html`)."
+    - "For HTML presentation output, preserve a 16:9 NBG slide composition while fitting the complete slide inside the browser viewport."
+    - "Before delivering generated HTML slides, render screenshots and visually inspect them for clipping, overflow, unintended element overlap, unreadable text, and NBG design alignment."
+    - "For HTML presentation layouts, reserve non-overlapping zones for title/header, body content, card grids/rows, bottom callouts, footer, logo, and page-number elements; revise or split slides whenever content cannot fit safely."
+    - "When asked to convert an HTML page to a PowerPoint presentation slide, recreate the slide with native editable PowerPoint shapes, text boxes, fonts, fills, borders, charts, and layout objects; do not capture the HTML content and use it as a slide image."
+    - "For HTML-to-PowerPoint conversion, keep continuous text blocks as continuous editable PowerPoint text blocks with natural wrapping; do not split paragraphs, headlines, or copy blocks into separate text boxes merely to mimic rendered line breaks."
+    - "For HTML-to-PowerPoint conversion, inspect the generated PowerPoint rendering against the rendered HTML reference and revise until the visual match is as close to 100% as technically possible while preserving native editability."
+    - "Keep newsletter/email prototypes out of scope unless the user explicitly asks to reuse them."
+  required_user_inputs_for_each_deck:
+    - "presentation_topic"
+    - "target_audience"
+    - "desired_slide_count_or_depth"
+  optional_user_inputs_with_defaults:
+    - "preferred_language: one of en, gr, bi; default en"
+    - "final_output_format_or_delivery_target: default html"
+
+source_material:
+  refined_request: "references/refined-request-user-level-nbg-design-skill.md"
+  codebase_scan: "references/codebase-scan-user-level-nbg-design-skill.md"
+
+nbg_design_system:
+  folder: "NBG-Design/"
+  documentation_host: "NBG-Design/NBG Design System.html"
+  slide_templates: "NBG-Design/slide-templates.jsx"
+  tweaks_panel: "NBG-Design/tweaks-panel.jsx"
+  source_master_deck: "NBG-Design/uploads/Powerpoint - Version 1.0_EN.pptx"
+  design_summary:
+    brand: "National Bank of Greece"
+    system_name: "NBG Presentation Design System"
+    audience: "Internal"
+    format: "16:9"
+    artboard: "1920x1080"
+    source: "v1.0 master deck, 205 slides"
+    typography: "Aptos with system fallback"
+    languages_supported:
+      - "en"
+      - "gr"
+      - "bi"
+    last_update: "2026-05-21"
+  presentation_defaults_from_design_system:
+    accent: "#003841"
+    language: "en"
+    output_format: "html"
+    show_logo: true
+  allowed_accent_colors:
+    deep_teal: "#003841"
+    teal: "#007B85"
+    bright_cyan: "#00ADBF"
+    electric_cyan: "#00CFE7"
+  neutral_colors:
+    black: "#0A1416"
+    cream: "#F5F8F6"
+  style_principles:
+    - "Teal-led palette with quiet neutrals."
+    - "Use large accent blocks on covers and section openers."
+    - "Keep content pages mostly monochromatic and calm."
+    - "Use generous whitespace, clear hierarchy, and restrained emphasis."
+    - "Preserve NBG logo placement and brand tone."
+
+assets:
+  logo_primary: "NBG-Design/assets/logo-primary.png"
+  logo_knockout: "NBG-Design/assets/logo-knockout.png"
+  logo_small: "NBG-Design/assets/logo-small.png"
+  photos:
+    - "NBG-Design/assets/photo-fields.jpeg"
+    - "NBG-Design/assets/photo-heart.jpeg"
+    - "NBG-Design/assets/photo-parthenon.jpeg"
+    - "NBG-Design/assets/photo-skate.jpeg"
+    - "NBG-Design/assets/photo-street.jpeg"
+  presentation_screenshots:
+    - "NBG-Design/screenshots/01-editorial.png"
+    - "NBG-Design/screenshots/01b-editorial-prog.png"
+    - "NBG-Design/screenshots/01c-editorial-end.png"
+    - "NBG-Design/screenshots/02-bold.png"
+    - "NBG-Design/screenshots/03-report.png"
+    - "NBG-Design/screenshots/03b-report-mid.png"
+    - "NBG-Design/screenshots/03c-report-learn.png"
+    - "NBG-Design/screenshots/03d-report-end.png"
+
+slide_template_catalog:
+  cover_templates:
+    - id: "Cover1"
+      source_symbol: "window.Cover1"
+      recommended_use: "hero-image cover with deep dark background"
+    - id: "Cover2"
+      source_symbol: "window.Cover2"
+      recommended_use: "neutral cover with large right-side image card"
+    - id: "Cover3"
+      source_symbol: "window.Cover3"
+      recommended_use: "alternate cover treatment from the design system"
+  divider_templates:
+    - id: "DividerImage"
+      source_symbol: "window.DividerImage"
+    - id: "DividerDark"
+      source_symbol: "window.DividerDark"
+    - id: "DividerBright"
+      source_symbol: "window.DividerBright"
+  content_templates:
+    - id: "ContentImageRight"
+      source_symbol: "window.ContentImageRight"
+    - id: "ContentTwoColumn"
+      source_symbol: "window.ContentTwoColumn"
+    - id: "ContentStat"
+      source_symbol: "window.ContentStat"
+
+presentation_generation_rules:
+  html_output_layout:
+    artboard: "1920x1080"
+    aspect_ratio: "16:9"
+    viewport_fit_policy: "scale_complete_slide_to_fit_viewport"
+    required_behavior:
+      - "HTML slides must render as a complete visible slide within the browser viewport; do not let the fixed 1920x1080 artboard exceed screen boundaries during normal viewing."
+      - "Use a viewport-fitting wrapper plus explicit rendered-width/rendered-height sizing, aspect-ratio constraint, CSS transform scaling, or equivalent standards-based approach so the full 16:9 slide is visible on common desktop/laptop viewports."
+      - "When scaling a fixed 1920x1080 artboard with CSS transforms, also size the wrapper to the viewport or to the exact scaled slide dimensions; never rely on the unscaled transformed element's layout box for page height."
+      - "Prefer `window.visualViewport` or equivalent actual viewport measurements for standalone HTML slides so browser UI and dynamic viewport height do not cause vertical overflow."
+      - "Set document/body overflow to prevent unintended horizontal or vertical scrolling caused by the slide artboard itself."
+      - "Keep the internal design coordinate system compatible with the NBG 1920x1080 artboard while scaling the rendered slide down when needed."
+      - "Verify fit at common desktop/laptop viewport sizes such as 1366x768, 1440x900, and 1920x1080 before finalizing HTML output."
+      - "Prevent unintended internal layout collisions between cards, text blocks, decorative shapes, logos, footers, page numbers, and grouped rows/columns; only allow overlaps that are explicitly intentional brand accents and do not obscure or crowd content."
+      - "Reserve clear vertical zones for title/header, primary body content, card rows/grids, bottom callouts, and footer/logo/page-number elements on the 1920x1080 artboard. Keep at least 32px spacing between adjacent content groups and at least 72px footer clearance unless a bundled template requires more."
+      - "Avoid mixing normal document flow with independently positioned bottom rows unless their bounding boxes are checked for separation at the 1920x1080 artboard level."
+      - "If a slide cannot fit without overlap, reduce copy, simplify components, resize cards, change the grid structure, or split the material across additional slides. Do not solve overlap by hiding overflow or placing opaque elements above other content."
+    recommended_html_pattern:
+      - "Wrap the fixed-size slide in a viewport-sized frame with `overflow: hidden`."
+      - "Scale the 1920x1080 slide from the top-left origin to the smaller of available width/1920 and available height/1080, then center the scaled slide with translate offsets."
+      - "Use actual viewport measurements (`visualViewport.width/height` when available, otherwise `innerWidth/innerHeight`) or a CSS equivalent that sets both width and height explicitly."
+      - "Avoid CSS-only transform scaling that leaves the parent layout height at the unscaled 1080px size."
+    layout_collision_policy:
+      regression_examples:
+        - "Do not repeat the `agentic-engineering-nbg-executive-presentation.html` slide 2 pattern where a board-level implication card visually overlaps the bottom three-card row."
+        - "Do not repeat the `agentic-engineering-nbg-executive-presentation.html` slide 3 pattern where the top row of cards overlaps lower question cards and the dark leadership card crowds the lower `New question` card."
+      required_authoring_checks:
+        - "For every slide, identify the bounding regions for header/title, each card row/grid, each callout, decorative shapes that approach content, footer/logo, and page number before finalizing CSS or PowerPoint coordinates."
+        - "Confirm those regions have positive separation on the 1920x1080 artboard; card rows and bottom callouts must not intrude into each other's vertical or horizontal space."
+        - "Decorative shapes may sit behind or near content only when they do not reduce readability, obscure text, or make card boundaries ambiguous."
+        - "When using absolute positioning, compute or visually confirm top/bottom coordinates and heights for each row rather than relying on z-index or source order."
+        - "If the safe zones cannot be preserved, revise the content model instead of squeezing elements together."
+  html_to_powerpoint_conversion:
+    required_when: "The user asks to convert an HTML page, HTML slide, or HTML presentation page into a PowerPoint slide/deck."
+    primary_policy: "native_recreation_not_screenshot_capture"
+    source_reference_policy:
+      - "Use the rendered HTML page as the authoritative visual reference for layout, colors, text hierarchy, spacing, and proportions."
+      - "Inspect the HTML source to extract exact content, colors, dimensions, fonts, assets, and intended line breaks."
+      - "Do not modify the source HTML unless the user separately approves a source correction."
+    native_recreation_requirements:
+      - "Create PowerPoint slides from editable native objects: shapes, text boxes, fonts, fills, borders, rounded rectangles, lines, charts, icons, and layout objects as applicable."
+      - "Do not place a full-slide screenshot, rendered HTML capture, or large rasterized content region into the PowerPoint as the slide content."
+      - "Do not use a screenshot as a background layer to simulate fidelity."
+      - "Use image assets only when they are discrete source/design assets, such as a logo or intentionally photographic content; never use an image to flatten text or major HTML content regions."
+      - "Keep the PowerPoint self-contained so it opens normally without requiring the HTML file to render slide content."
+      - "Match the HTML artboard aspect ratio and dimensions, normally NBG 16:9 / 1920x1080 mapped to PowerPoint widescreen."
+    continuous_text_policy:
+      - "Preserve paragraphs, headlines, labels, recommendations, and other continuous copy blocks as continuous editable PowerPoint text blocks."
+      - "Rely on PowerPoint text wrapping inside appropriately sized text boxes rather than splitting text into separate boxes for each visual line."
+      - "Preserve explicit/source-intended line breaks only when they exist semantically in the HTML, such as `<br>` title breaks or deliberately separated label lines."
+      - "After generation, inspect the slide XML or object model when practical to confirm continuous text blocks were not decomposed into per-line objects."
+    visual_match_policy:
+      target: "Aim for a human-visible 100% match to the rendered HTML representation, subject only to unavoidable browser-versus-PowerPoint rendering differences."
+      required_checks:
+        - "Render or open the generated PowerPoint slide and visually compare it against the rendered HTML reference."
+        - "Check placement, sizing, colors, typography hierarchy, spacing, card/border geometry, chart proportions, logo placement, and footer/header alignment."
+        - "Check that no text is clipped, missing, unreadable, overlapped, or unintentionally fragmented."
+        - "Revise and re-inspect until obvious visual mismatches are corrected or explicitly documented as technical limitations requiring user approval."
+      verification_artifacts:
+        - "Save rendered HTML reference screenshots and PowerPoint render/thumbnail screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, when screenshot tooling is available."
+        - "Document package/object verification and visual inspection evidence under `docs/reference/` for non-trivial conversions."
+  visual_verification:
+    required_for_output_formats:
+      - "html"
+      - "pptx_converted_from_html"
+    screenshot_directory: "test_scripts/screenshots/ in the active working project or another user-selected output folder"
+    required_viewports:
+      - "1366x768"
+      - "1440x900"
+    optional_viewports:
+      - "1920x1080"
+      - "1280x720"
+    required_behavior:
+      - "Before marking an HTML slide deliverable complete, render browser screenshots of the generated slide at every required viewport."
+      - "Save screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, using descriptive filenames that include the slide name and viewport size."
+      - "Open/read the generated screenshots and visually inspect the actual rendered result, not only CSS or arithmetic assumptions."
+      - "If visual inspection reveals clipped content, hidden footer/recommendation blocks, excessive whitespace, overflow, unintended overlap between cards/text/shapes/logos/footers/grouped rows, unreadable text, broken logo/assets, or weak NBG design alignment, revise the slide and repeat the screenshot check."
+      - "When inspecting screenshots, explicitly check card-to-card, callout-to-card, shape-to-content, logo/footer-to-content, and page-number clearance; a deck is not complete until all unintended collisions are removed and rechecked."
+      - "For HTML-to-PowerPoint conversions, inspect the rendered PowerPoint slide against the rendered HTML reference and confirm that the PowerPoint content is recreated with native objects rather than a captured HTML image."
+      - "For HTML-to-PowerPoint conversions, verify continuous text blocks remain continuous editable text blocks, with only source-intended manual line breaks preserved."
+      - "Final response must mention the screenshot files or rendered artifacts used for visual verification and summarize whether clipping/overflow or visual mismatches were observed."
+    browser_executable_requirement: >-
+      Screenshot automation requires an explicit browser executable path supplied by the local user or execution environment; do not rely on a committed machine-specific default.
+    html_file_url_policy: >-
+      Build the file:// URL from the current checkout location and the repository-relative generated HTML path at execution time; do not commit machine-specific absolute HTML paths.
+    suggested_browser_command_template: >-
+      <browser-executable> --headless=new --disable-gpu --hide-scrollbars --window-size=<width>,<height> --screenshot=test_scripts/screenshots/<slide-name>-<width>x<height>.png file://<absolute-path-derived-from-active-output-location>/<relative-html-slide-path>
+  before_generating:
+    - "Open and inspect bundled `NBG-Design/NBG Design System.html` from the skill root."
+    - "Open and inspect bundled `NBG-Design/slide-templates.jsx` from the skill root."
+    - "Use bundled `NBG-Design/assets/` from the skill root for logos and existing photography."
+    - "Use bundled presentation screenshots only as visual references, not as source code."
+  content_structure:
+    - "Start with an NBG-style cover slide."
+    - "Use divider slides for major sections."
+    - "Use content slides for explanations, comparisons, statistics, and takeaways."
+    - "Prefer concise slide copy and speaker-notes-style expansion where needed."
+  quality_checks:
+    - "Confirm every slide has a clear purpose."
+    - "Confirm colors match the allowed palette."
+    - "Confirm language setting is consistent with the requested deck language, or English (`en`) when no language was requested."
+    - "Confirm final output format is consistent with the requested format, or HTML (`html`) when no format was requested."
+    - "For HTML output, confirm the complete 16:9 slide fits inside the browser viewport without unintended horizontal or vertical overflow."
+    - "For HTML output, render and visually inspect screenshots at 1366x768 and 1440x900 before delivery; do not rely only on code review or fit calculations."
+    - "For HTML output, verify screenshots show no clipped content, hidden bottom blocks, unintended scroll/overflow, unintended element overlap, broken assets, or unreadable text."
+    - "For HTML output, confirm cards, text blocks, decorative shapes, logos, footer elements, page numbers, and grouped rows/columns remain visually separated or intentionally layered without obscuring content."
+    - "If screenshots reveal overlap, revise layout zones/copy/grid structure and repeat screenshot validation at 1366x768 and 1440x900 before delivery."
+    - "For HTML-to-PowerPoint conversion, confirm the PPTX uses native editable shapes/text instead of a full-slide or major-content screenshot."
+    - "For HTML-to-PowerPoint conversion, confirm continuous text blocks remain continuous editable text blocks and are not split into per-line text boxes."
+    - "For HTML-to-PowerPoint conversion, visually inspect the generated PowerPoint render against the rendered HTML reference and correct obvious mismatches before delivery."
+    - "Confirm NBG logo visibility matches the requested `show_logo` setting."
+    - "Confirm no newsletter/email-specific layouts are used unless explicitly requested."
+
+out_of_scope_by_default:
+  - "NBG-Design/newsletter/"
+  - "NBG-Design/nbg-gpt/"
+  - "NBG-Design/notebooklm/"
+  - "NBG-Design/screenshots/email-*.png"
+  - "NBG-Design/screenshots/gpt-*.png"
+  - "NBG-Design/screenshots/lm-*.png"
+  - "NBG-Design/screenshots/train-email-*.png"
+
+missing_information_policy:
+  rule: "ask_user_instead_of_fallback_except_explicit_defaults"
+  explicit_defaults:
+    language_if_not_supplied: "en"
+    final_output_format_if_not_supplied: "html"
+  do_not_guess:
+    - "presentation topic"
+    - "audience"
+    - "slide count"
+    - "whether to modify source design files"
