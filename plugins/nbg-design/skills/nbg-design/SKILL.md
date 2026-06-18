@@ -60,7 +60,7 @@ For HTML slide or presentation output:
 - When scaling a fixed 1920×1080 artboard, do not rely on the unscaled transformed element's layout box for page height.
 - Prevent unintended horizontal or vertical scrolling caused by the artboard itself.
 - Verify fit at common desktop/laptop viewport sizes, including 1366×768 and 1440×900.
-- When screenshot tooling is available, save screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, and visually inspect them before delivery.
+- When screenshot tooling is available, save screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, and visually inspect them before delivery. On a headless host with no browser (typical for SSH/Linux runs), the screenshot step cannot run — so the browser-free `scripts/verify-deck.mjs <deck>.html --strict` check is the mandatory minimum gate and must pass before delivery.
 - Protect the slide artboard from unintended element overlap: cards, text blocks, decorative shapes, logos, footers, page numbers, and grouped rows/columns must not collide unless the overlap is an explicit, content-safe brand accent.
 - Reserve non-overlapping layout zones for the title/header, main body, card grids/rows, bottom callouts, and footer/logo area. Keep at least 32px internal artboard spacing between adjacent content groups, and at least 72px clearance above footer/page-number elements unless the template defines a larger safe area.
 - When content does not fit without overlap, reduce copy, resize or simplify components, change the grid/row structure, or split the content across additional slides. Do not hide overflow, stack opaque elements on top of content, or rely on z-index as a workaround for a crowded layout.
@@ -92,9 +92,28 @@ A deck that contains any `file://`, absolute, or relative image path, or any non
 3. Choose the logo variant by background: primary on light, knockout on dark, small for footers/compact placements. Preserve native aspect ratio (set `height`, let `width:auto`); never stretch or distort.
 4. **For PPTX output**, insert the actual `NBG-Design/assets/<asset>.png|jpeg` image as a picture object; do not re-draw the logo with shapes or text and do not link the image by external path.
 
+### Deterministic embedding & verification (REQUIRED — especially headless / SSH / Linux)
+
+Hand-pasting large base64 blobs is the step that most often fails in non-interactive runs (e.g. `claude -p` over SSH on a Linux host): the model "approximates" a photo with a gradient or substitutes a text/box logo, and — with no display to screenshot — the lapse ships. **Do not rely on hand-pasting.** Use the bundled scripts instead:
+
+1. **Author the deck with placeholder tokens, not inline data URIs.** Put a token wherever an image goes: `{{LOGO_PRIMARY}}`, `{{LOGO_KNOCKOUT}}`, `{{LOGO_SMALL}}`, and `{{PHOTO_FIELDS}}`, `{{PHOTO_HEART}}`, `{{PHOTO_PARTHENON}}`, `{{PHOTO_SKATE}}`, `{{PHOTO_STREET}}`. Define each token **once** (e.g. a CSS `background-image: url("{{PHOTO_STREET}}")` class) and reuse the class.
+2. **Embed deterministically.** From any working directory:
+   `node "<skill-root>/scripts/embed-assets.mjs" <deck>.html`
+   The script resolves the bundled assets relative to itself (not the cwd), so it works on any machine. It replaces every token with the verbatim `data:` URI and fails loudly if an asset is missing.
+3. **Verify before delivery (browser-free — works headless).**
+   `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict`
+   It exits non-zero if any image is not a `data:` URI, if forbidden `file://`/absolute/relative paths remain, if tokens are unresolved, or (in `--strict`) if the deck is suspiciously small / photo-less or contains bare `NBG`/`NPG` text that may be a logo substitute. **Never deliver a deck that fails this gate.**
+4. **If the skill was moved to another machine**, confirm the **whole** skill folder travelled, including `NBG-Design/assets/` (the `*.datauri.txt` files). If `embed-assets.mjs` reports a missing assets directory, that is the root cause — copy the full skill, not just `SKILL.md`.
+
+5. **Optional visual check when a browser exists.** On a host with Chrome/Chromium/Edge, also capture screenshots:
+   `node "<skill-root>/scripts/screenshot-deck.mjs" <deck>.html`
+   It auto-detects a browser, navigates each slide (works for both hash-based and `showSlide`-based decks), and writes one PNG per slide at 1366×768 and 1440×900 into `test_scripts/screenshots/`. Then **read each PNG** and inspect for clipping, overflow, element overlap, missing logo/photos, and brand alignment. If no browser is found it exits cleanly (code 3) — on a headless host rely on the `verify-deck.mjs --strict` gate instead.
+
+`<skill-root>` is the directory containing this `SKILL.md`. See `scripts/README.md`.
+
 ### Pre-delivery check
 
-Before delivering HTML, verify: (a) every `<img>`/`background-image` value starts with `data:image/` — grep the file and confirm there are **zero** `file://`, absolute, or relative image paths; and (b) a real NBG lockup image (not a text/CSS placeholder) appears wherever a logo is expected.
+Before delivering HTML, verify: (a) every `<img>`/`background-image` value starts with `data:image/` — grep the file and confirm there are **zero** `file://`, absolute, or relative image paths; and (b) a real NBG lockup image (not a text/CSS placeholder) appears wherever a logo is expected. The fastest way to perform both checks is to run `scripts/verify-deck.mjs <deck>.html --strict` (above), which works even on a headless host with no browser.
 
 ## HTML-to-PowerPoint conversion guardrails
 
@@ -165,6 +184,7 @@ Do not use or expect these adjacent project artifacts unless the user explicitly
 
 Before delivering NBG slide work:
 
+- For HTML output, run `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict` and confirm it passes. This is mandatory and works on a headless host. Never report a deck complete while it fails. (Embed assets with `scripts/embed-assets.mjs` first; see "Deterministic embedding & verification".)
 - Confirm every slide has a clear purpose.
 - Confirm colors match the bundled NBG palette.
 - Confirm the language is consistent with the request or the approved English default.
