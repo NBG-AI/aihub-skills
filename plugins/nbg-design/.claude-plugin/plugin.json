@@ -1,7 +1,7 @@
 {
   "name": "nbg-design",
   "description": "Use when creating National Bank of Greece (NBG) styled presentations, HTML slides, slide specifications, or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Giorgos Marinos"
   },
