@@ -66,21 +66,35 @@ For HTML slide or presentation output:
 - When content does not fit without overlap, reduce copy, resize or simplify components, change the grid/row structure, or split the content across additional slides. Do not hide overflow, stack opaque elements on top of content, or rely on z-index as a workaround for a crowded layout.
 - Treat the current `agentic-engineering-nbg-executive-presentation.html` slides 2 and 3 overlap pattern as a regression example: independently positioned card/callout rows must be checked against each other before delivery.
 
-## Logo rendering (MANDATORY)
+## Image embedding (MANDATORY)
 
-The NBG logo is a brand asset and must be reproduced exactly from the bundled image. Do **not** approximate it.
+Delivered HTML must be **fully self-contained**: every image — the NBG logo **and** all photography — must be embedded inline as a base64 `data:` URI so the deck renders identically on any machine, when moved, emailed, or opened directly. This is the single most important output rule.
 
-- **Never** substitute the logo with text (e.g. a "National Bank of Greece" label), initials, a single letter, a colored square/rounded box, an emoji, or any hand-built CSS/SVG mark. A deck that renders the logo as anything other than the bundled lockup image is incorrect and must be fixed before delivery.
-- **For HTML output, embed the logo as a base64 `data:` URI so it always renders in a standalone file** (when the `.html` is moved, emailed, or opened directly). Do **not** reference the logo by a relative or absolute file path in delivered HTML — a path that cannot be resolved when the file is opened on its own is the most common cause of a missing/incorrect logo.
-  - The ready-to-paste data URIs are bundled next to the images:
-    - `NBG-Design/assets/logo-primary.datauri.txt` — full-color lockup, for **light** backgrounds.
-    - `NBG-Design/assets/logo-knockout.datauri.txt` — white/knockout lockup, for **dark** backgrounds.
-    - `NBG-Design/assets/logo-small.datauri.txt` — compact wordmark, for footers/tight spaces.
-  - Read the appropriate `*.datauri.txt` file and use its entire contents as the `src`, e.g. `<img src="data:image/png;base64,..." alt="National Bank of Greece" style="height:56px;width:auto;display:block;" />`.
-  - To avoid repeating a large data URI on every slide, define it once (a CSS custom property such as `--nbg-logo`, a single reusable element/component, or a shared JS const) and reference it from each slide's logo/footer zone.
-- **Choose the variant by background:** primary on light, knockout on dark, small for footers/compact placements. Preserve the logo's native aspect ratio (set `height` and let `width:auto`); never stretch or distort it.
-- **For PPTX output**, insert the actual `NBG-Design/assets/logo-*.png` image as a picture object; do not re-draw the logo with shapes or text.
-- Before delivery, confirm the rendered output contains the real NBG lockup image (verify an `<img>`/picture sourced from the bundled logo exists where a logo is expected), not a text or CSS placeholder.
+### Absolute prohibitions for delivered HTML
+
+- **NEVER** reference any image by a file path of any kind. Specifically forbidden as an `<img src>` / `background-image` / `url(...)` value:
+  - `file://...` URLs (e.g. `file:///home/<user>/.claude/plugins/.../assets/logo-knockout.png`) — these point at the generating machine's plugin cache and break everywhere else. **This is the most common cause of a missing logo and is never acceptable.**
+  - Absolute filesystem paths (`/Users/...`, `/home/...`, `C:\...`).
+  - Relative paths (`assets/...`, `./NBG-Design/...`, `../...`).
+  - URLs to the skill directory, the plugin cache, or any local location.
+- **NEVER** substitute the logo with text (e.g. a "National Bank of Greece" label), initials, a single letter, a colored square/rounded box, an emoji, or any hand-built CSS/SVG mark.
+
+A deck that contains any `file://`, absolute, or relative image path, or any non-image logo placeholder, is **incorrect and must be fixed before delivery**.
+
+### Required approach
+
+1. For each image you place, read the matching pre-encoded data-URI file bundled next to the asset and paste its **entire contents** as the `src`. Every asset has a ready-to-use `<asset>.datauri.txt`:
+   - Logos: `NBG-Design/assets/logo-primary.datauri.txt` (full-color, for **light** backgrounds), `logo-knockout.datauri.txt` (white, for **dark** backgrounds), `logo-small.datauri.txt` (compact, for footers/tight spaces).
+   - Photography: `NBG-Design/assets/photo-fields.datauri.txt`, `photo-heart.datauri.txt`, `photo-parthenon.datauri.txt`, `photo-skate.datauri.txt`, `photo-street.datauri.txt`.
+   - Each file already begins with the correct `data:image/png;base64,` or `data:image/jpeg;base64,` prefix — paste it verbatim, do not truncate or edit it.
+   - Example: `<img src="data:image/png;base64,iVBORw0K..." alt="National Bank of Greece" style="height:56px;width:auto;display:block;" />`
+2. To avoid repeating a large data URI, define each one **once** and reuse it. Valid reuse patterns: a CSS class with `background-image: url("data:...")` applied to sized elements (data URIs work in `background-image`), or — in React/Babel decks — a shared JS constant interpolated into each `src`. (Note: CSS `var()` cannot be used for an `<img src>` attribute, only for `background-image`.)
+3. Choose the logo variant by background: primary on light, knockout on dark, small for footers/compact placements. Preserve native aspect ratio (set `height`, let `width:auto`); never stretch or distort.
+4. **For PPTX output**, insert the actual `NBG-Design/assets/<asset>.png|jpeg` image as a picture object; do not re-draw the logo with shapes or text and do not link the image by external path.
+
+### Pre-delivery check
+
+Before delivering HTML, verify: (a) every `<img>`/`background-image` value starts with `data:image/` — grep the file and confirm there are **zero** `file://`, absolute, or relative image paths; and (b) a real NBG lockup image (not a text/CSS placeholder) appears wherever a logo is expected.
 
 ## HTML-to-PowerPoint conversion guardrails
 
@@ -116,11 +130,12 @@ Assets:
 - `NBG-Design/assets/logo-primary.png` (+ `logo-primary.datauri.txt` — base64 data URI for HTML embedding)
 - `NBG-Design/assets/logo-knockout.png` (+ `logo-knockout.datauri.txt` — base64 data URI for HTML embedding)
 - `NBG-Design/assets/logo-small.png` (+ `logo-small.datauri.txt` — base64 data URI for HTML embedding)
-- `NBG-Design/assets/photo-fields.jpeg`
-- `NBG-Design/assets/photo-heart.jpeg`
-- `NBG-Design/assets/photo-parthenon.jpeg`
-- `NBG-Design/assets/photo-skate.jpeg`
-- `NBG-Design/assets/photo-street.jpeg`
+- `NBG-Design/assets/photo-fields.jpeg` (+ `photo-fields.datauri.txt`)
+- `NBG-Design/assets/photo-heart.jpeg` (+ `photo-heart.datauri.txt`)
+- `NBG-Design/assets/photo-parthenon.jpeg` (+ `photo-parthenon.datauri.txt`)
+- `NBG-Design/assets/photo-skate.jpeg` (+ `photo-skate.datauri.txt`)
+- `NBG-Design/assets/photo-street.jpeg` (+ `photo-street.datauri.txt`)
+- All `*.datauri.txt` files hold the ready-to-embed base64 data URI for the matching image (see "Image embedding (MANDATORY)").
 
 Presentation screenshots:
 
