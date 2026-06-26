@@ -1,0 +1,7 @@
+# Python build artifacts (the PPTX engine venv is created by setup, not committed)
+renderers/pptx/.venv/
+__pycache__/
+*.pyc
+# Generated decks & screenshots
+*.pptx
+test_scripts/screenshots/
