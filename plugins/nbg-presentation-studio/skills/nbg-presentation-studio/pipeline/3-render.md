@@ -37,6 +37,11 @@ Config shapes (slide index, chart/table index, data) are documented in `renderer
 
 ## (b) HTML — OPT-IN (only when the user asks)
 
+> **Preflight — agent-browser required.** The HTML path opens a browser (visual QA + any preview),
+> so it is browser-dependent: clear the agent-browser preflight gate in `SKILL.md` before authoring.
+> If `command -v agent-browser` fails, install it (`brew install agent-browser` or
+> `npm install -g agent-browser`) or ask the user — never skip the visual check silently.
+
 Author a single self-contained **1920×1080** HTML deck, then inline all assets.
 
 ### 1. Author from templates + theme tokens
@@ -56,7 +61,8 @@ node renderers/html/embed-assets.mjs <deck>.html -o out.html   # write to a new 
 - Replaces each `{{TOKEN}}` with its `data:image/...` URI. Fails loudly on an unknown token or a
   non-image asset. Resolves assets relative to the script, so it works from any cwd.
 
-The HTML deck is verified in Stage 4 with `verify-deck.mjs --strict` (and optional screenshots).
+The HTML deck is verified in Stage 4 with the browser-free `verify-deck.mjs --strict` gate, then
+visually with agent-browser screenshots (see `pipeline/4-qa.md`).
 
 ---
 

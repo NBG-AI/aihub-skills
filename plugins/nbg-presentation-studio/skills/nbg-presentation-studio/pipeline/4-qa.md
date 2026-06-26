@@ -64,14 +64,28 @@ node renderers/html/verify-deck.mjs <deck>.html --strict
   than `--min-bytes` (default 200000) — the photo-less-deck tell; bare `>NBG<` / `>NPG<` text nodes
   that may be a text/box substitute for the real logo lockup.
 
-### Visual check (optional, needs a browser)
+### Visual check (required for HTML — uses agent-browser)
+
+This step is browser-dependent, so it needs the **agent-browser** CLI. Clear the Preflight gate in
+`SKILL.md` first: if `command -v agent-browser` fails, install it (`brew install agent-browser`, or
+`npm install -g agent-browser`) or ask the user — never skip the visual check silently.
+
+Capture one PNG per slide with agent-browser, stepping through the deck's own keyboard nav
+(`ArrowRight` advances; `Home`/`End` jump to first/last):
 ```bash
-node renderers/html/screenshot-deck.mjs <deck>.html
+agent-browser set viewport 1920 1080                  # native deck size
+agent-browser open "file://$PWD/<deck>.html"          # slide 1 is shown on load
+agent-browser screenshot test_scripts/screenshots/s1.png
+agent-browser press ArrowRight                         # advance one slide…
+agent-browser screenshot test_scripts/screenshots/s2.png
+#   …repeat press ArrowRight + screenshot for every slide
 ```
-- Writes one PNG per slide at **1366×768 and 1440×900** (default viewports).
-- Exit codes: 0 = written, 1 = error, **3 = no browser** (soft signal — fall back to the `--strict`
-  gate above, which is mandatory on headless hosts).
-- **Then READ each PNG** and inspect for clipping, overlap, and missing assets.
+- **Then READ each PNG** and inspect for clipping, overflow, element overlap, missing logo/photos,
+  and brand alignment.
+- Batch alternative: `node renderers/html/screenshot-deck.mjs <deck>.html` writes every slide in one
+  shot. It auto-detects a Chromium/Edge binary, so it is a convenient fallback when one is already on
+  the host; on a truly headless host with no browser at all, the browser-free `verify-deck.mjs
+  --strict` gate above is the mandatory minimum.
 
 ---
 

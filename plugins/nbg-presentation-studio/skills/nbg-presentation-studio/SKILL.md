@@ -81,9 +81,45 @@ uv pip install --python .venv/bin/python -r requirements.txt   # python-pptx, py
 ```
 Invoke the engine with that interpreter: `renderers/pptx/.venv/bin/python renderers/pptx/nbg_build.py ...`.
 
-**HTML toolchain (Node ≥ 16, zero dependencies):** nothing to install — the three scripts
-in `renderers/html/` run on a stock Node. A Chrome/Chromium/Edge binary is only needed for
-the optional screenshot step.
+**HTML toolchain (Node ≥ 16):** the three scripts in `renderers/html/` run on a stock Node with
+zero npm dependencies.
+
+**agent-browser (REQUIRED for browser-dependent runs — HTML render, in-browser preview, visual QA):**
+the browser-automation CLI the skill uses to open, screenshot, and visually verify HTML decks. The
+default PPTX renderer needs no browser, so a pure-PPTX run does not require it.
+- Install — macOS: `brew install agent-browser` · any platform (Node ≥ 18): `npm install -g agent-browser`
+- Detect: `command -v agent-browser` (then `agent-browser --version`)
+- Homepage https://agent-browser.dev/ · repo https://github.com/vercel-labs/agent-browser
+
+A run that will touch a browser must clear the **Preflight gate** below before it starts.
+
+---
+
+## Preflight gate — agent-browser (browser-dependent runs only)
+
+**Trigger:** the moment a run will touch a browser — before authoring/rendering an HTML deck
+(Stage 3, HTML path), before any in-browser preview, and before the Stage 4 visual/screenshot QA.
+A **pure-PPTX run skips this gate entirely** (PPTX produces no browser output, so agent-browser is
+not needed). Run the check *before* you start that browser work, not after.
+
+**1 — Detect**
+```bash
+command -v agent-browser >/dev/null 2>&1 && agent-browser --version || echo "MISSING"
+```
+
+**2 — Present** → continue with the browser step.
+
+**3 — MISSING** → STOP. Do not silently continue, fall back to another tool, or skip the visual QA.
+Ask the user how to proceed (use `AskUserQuestion`) and offer two paths:
+
+| Choice | What you do |
+|---|---|
+| **Install it for me (automated)** | Only with the user's explicit go-ahead, run the install for their platform — macOS: `brew install agent-browser`; otherwise (Node ≥ 18): `npm install -g agent-browser`. Then re-run the detect command and proceed only once it prints a version. |
+| **I'll install it myself (manual)** | Point the user to the commands above (or https://agent-browser.dev/), then wait. Re-detect before proceeding. |
+
+Installing software changes the user's machine: never run the automated install without explicit
+consent, and never substitute a missing agent-browser with another browser or skip the visual step
+on your own — that violates the no-fallback rule.
 
 ---
 
@@ -100,16 +136,18 @@ the optional screenshot step.
    `nbg_validate.py` automatically.
 3. Complete the content QA in `pipeline/4-qa.md`. Remediate and re-render until clean.
 
-### HTML (opt-in)
+### HTML (opt-in — browser-dependent)
+0. **Preflight:** clear the agent-browser gate above. This path opens a browser, so if
+   agent-browser is missing, install it (or ask the user) before continuing — do not proceed without it.
 1. Build the same deck spec (stages 1–2).
 2. Author a self-contained 1920×1080 deck from the spec using `renderers/html/templates/`
    and theme tokens. Reference **every** image as a `{{TOKEN}}` placeholder.
-3. Embed assets, then run the strict gate:
+3. Embed assets, then run the browser-free strict gate:
    ```bash
    node renderers/html/embed-assets.mjs deck.html
    node renderers/html/verify-deck.mjs  deck.html --strict      # must exit 0
-   node renderers/html/screenshot-deck.mjs deck.html            # optional; then READ the PNGs
    ```
+   Then capture and **READ** one PNG per slide with agent-browser (recipe in `pipeline/4-qa.md`).
 Full procedure: `pipeline/3-render.md` and `pipeline/4-qa.md`.
 
 ---

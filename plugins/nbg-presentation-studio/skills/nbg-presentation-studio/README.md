@@ -24,9 +24,12 @@ cd renderers/pptx && uv venv .venv && uv pip install --python .venv/bin/python -
 # PPTX (default) — build + auto-validate from a deck spec
 renderers/pptx/.venv/bin/python renderers/pptx/nbg_build.py spec/examples/executive-summary.yaml /tmp/demo.pptx
 
-# HTML (opt-in) — embed assets into a token-based deck, then run the strict gate
+# HTML (opt-in) is browser-dependent — it requires the agent-browser CLI (preflight gate).
+#   Install once: brew install agent-browser   (or: npm install -g agent-browser)
+#   Detect:       command -v agent-browser
 node renderers/html/embed-assets.mjs deck.html
-node renderers/html/verify-deck.mjs  deck.html --strict
+node renderers/html/verify-deck.mjs  deck.html --strict   # browser-free
+# then capture + READ one PNG per slide with agent-browser (see pipeline/4-qa.md)
 ```
 
 In Claude Code, just ask: *"create an NBG board deck on Q4 results"* (→ PPTX) or
