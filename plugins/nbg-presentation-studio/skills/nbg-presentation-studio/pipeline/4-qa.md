@@ -64,28 +64,38 @@ node renderers/html/verify-deck.mjs <deck>.html --strict
   than `--min-bytes` (default 200000) — the photo-less-deck tell; bare `>NBG<` / `>NPG<` text nodes
   that may be a text/box substitute for the real logo lockup.
 
-### Visual check (required for HTML — uses agent-browser)
+### Quality inspection (required for HTML — agent-browser, automated)
 
-This step is browser-dependent, so it needs the **agent-browser** CLI. Clear the Preflight gate in
-`SKILL.md` first: if `command -v agent-browser` fails, install it (`brew install agent-browser`, or
-`npm install -g agent-browser`) or ask the user — never skip the visual check silently.
+Browser-dependent: needs the **agent-browser** CLI. Clear the Preflight gate in `SKILL.md` first —
+if `command -v agent-browser` fails, install it (`brew install agent-browser`, or
+`npm install -g agent-browser`) or ask the user; never skip the inspection silently.
 
-Capture one PNG per slide with agent-browser, stepping through the deck's own keyboard nav
-(`ArrowRight` advances; `Home`/`End` jump to first/last):
 ```bash
-agent-browser set viewport 1920 1080                  # native deck size
-agent-browser open "file://$PWD/<deck>.html"          # slide 1 is shown on load
-agent-browser screenshot test_scripts/screenshots/s1.png
-agent-browser press ArrowRight                         # advance one slide…
-agent-browser screenshot test_scripts/screenshots/s2.png
-#   …repeat press ArrowRight + screenshot for every slide
+node renderers/html/inspect-deck.mjs <deck>.html      # must exit 0
 ```
-- **Then READ each PNG** and inspect for clipping, overflow, element overlap, missing logo/photos,
-  and brand alignment.
-- Batch alternative: `node renderers/html/screenshot-deck.mjs <deck>.html` writes every slide in one
-  shot. It auto-detects a Chromium/Edge binary, so it is a convenient fallback when one is already on
-  the host; on a truly headless host with no browser at all, the browser-free `verify-deck.mjs
-  --strict` gate above is the mandatory minimum.
+Drives agent-browser to open the deck at 1920×1080 and measure every slide's DOM, catching the
+defects a static text check cannot see:
+- **slide-overflow** — content exceeds the 1920×1080 frame.
+- **off-frame** — a text block or image pushed past a slide edge (clipped).
+- **overlap** — two top-level regions collide (e.g. a too-long title running into the body — the
+  exact defect class that *looks* fine until inspected).
+- **broken-image** — an `<img>` that did not load.
+- **tiny-font** — text below the legibility floor (`--min-font`, default 12px; reported as a warning).
+
+Writes `inspection-report.json`. Errors fail the run (exit 1); `--strict` also fails on warnings.
+Fix every error and re-run until it exits 0.
+
+### Visual read (subjective)
+
+The inspection covers geometry/assets; a human-grade read covers the rest — action titles, balance,
+hierarchy, brand. Capture one PNG per slide and **READ** them:
+```bash
+node renderers/html/inspect-deck.mjs <deck>.html --screens   # via agent-browser (slow: one round-trip/slide)
+node renderers/html/screenshot-deck.mjs <deck>.html          # faster batch capture (auto-detects Chromium/Edge)
+```
+Then READ each PNG for clipping, overflow, element overlap, missing logo/photos, and brand alignment.
+On a truly headless host with no browser at all, the browser-free `verify-deck.mjs --strict` gate is
+the mandatory minimum.
 
 ---
 

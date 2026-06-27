@@ -33,7 +33,8 @@ INPUT (brief / content / existing deck / notes)
    │                          nbg_build.py         + data-URI embed
    │                               │                 │
    ├─ 4. QA GATE  ─────────────────┤ nbg_validate.py │ verify-deck --strict
-   │              (branched by      + content QA      + screenshot review
+   │              (branched by      + content QA      + inspect-deck (agent-browser)
+   │                                                  + screenshot review
    │               format; max 2 remediation cycles — never ship a FAIL)
    │                               ▼                 ▼
    └─ 5. LEARN (optional)  ──►  board-ready deck delivered
@@ -142,12 +143,16 @@ on your own — that violates the no-fallback rule.
 1. Build the same deck spec (stages 1–2).
 2. Author a self-contained 1920×1080 deck from the spec using `renderers/html/templates/`
    and theme tokens. Reference **every** image as a `{{TOKEN}}` placeholder.
-3. Embed assets, then run the browser-free strict gate:
+3. Embed assets, then run the QA gates — static, then the agent-browser quality inspection:
    ```bash
    node renderers/html/embed-assets.mjs deck.html
-   node renderers/html/verify-deck.mjs  deck.html --strict      # must exit 0
+   node renderers/html/verify-deck.mjs  deck.html --strict      # browser-free; must exit 0
+   node renderers/html/inspect-deck.mjs deck.html               # agent-browser; must exit 0
    ```
-   Then capture and **READ** one PNG per slide with agent-browser (recipe in `pipeline/4-qa.md`).
+   `inspect-deck.mjs` opens the deck in agent-browser and verifies each slide's layout/assets
+   (overflow, clipped/off-frame content, title↔body overlap, broken images, illegible fonts).
+   Then capture screenshots (`inspect-deck.mjs deck.html --screens`, or the faster
+   `screenshot-deck.mjs`) and **READ** them for the subjective quality bar.
 Full procedure: `pipeline/3-render.md` and `pipeline/4-qa.md`.
 
 ---
@@ -196,8 +201,9 @@ nbg-presentation-studio/
 │   └── html/                    # HTML toolchain (Node, zero-dep)
 │       ├── templates/           # 1920×1080 slide templates + design system reference
 │       ├── embed-assets.mjs     # {{TOKEN}} → inline data: URI
-│       ├── verify-deck.mjs      # headless strict QA gate
-│       ├── screenshot-deck.mjs  # optional visual capture
+│       ├── verify-deck.mjs      # browser-free static QA gate
+│       ├── inspect-deck.mjs     # agent-browser DOM quality inspection (overflow/overlap/assets)
+│       ├── screenshot-deck.mjs  # batch visual capture (Chromium/Edge)
 │       └── assets/              # data-URI assets for embedding
 └── pipeline/                    # 1-storyline · 2-storyboard · 3-render · 4-qa · 5-learning
 ```

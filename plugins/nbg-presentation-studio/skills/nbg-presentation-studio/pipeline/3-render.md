@@ -61,8 +61,8 @@ node renderers/html/embed-assets.mjs <deck>.html -o out.html   # write to a new 
 - Replaces each `{{TOKEN}}` with its `data:image/...` URI. Fails loudly on an unknown token or a
   non-image asset. Resolves assets relative to the script, so it works from any cwd.
 
-The HTML deck is verified in Stage 4 with the browser-free `verify-deck.mjs --strict` gate, then
-visually with agent-browser screenshots (see `pipeline/4-qa.md`).
+The HTML deck is verified in Stage 4 with the browser-free `verify-deck.mjs --strict` gate, then the
+agent-browser `inspect-deck.mjs` quality inspection, then a visual screenshot read (see `pipeline/4-qa.md`).
 
 ---
 

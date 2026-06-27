@@ -28,8 +28,9 @@ renderers/pptx/.venv/bin/python renderers/pptx/nbg_build.py spec/examples/execut
 #   Install once: brew install agent-browser   (or: npm install -g agent-browser)
 #   Detect:       command -v agent-browser
 node renderers/html/embed-assets.mjs deck.html
-node renderers/html/verify-deck.mjs  deck.html --strict   # browser-free
-# then capture + READ one PNG per slide with agent-browser (see pipeline/4-qa.md)
+node renderers/html/verify-deck.mjs  deck.html --strict   # browser-free static gate
+node renderers/html/inspect-deck.mjs deck.html            # agent-browser DOM quality inspection
+# then capture + READ one PNG per slide (inspect-deck --screens, or screenshot-deck.mjs); see pipeline/4-qa.md
 ```
 
 In Claude Code, just ask: *"create an NBG board deck on Q4 results"* (→ PPTX) or
@@ -44,7 +45,7 @@ In Claude Code, just ask: *"create an NBG board deck on Q4 results"* (→ PPTX) 
 | `spec/examples/` | Three validated example specs |
 | `theme/nbg/brand.md` | Unified brand token manifest (single source of truth) |
 | `renderers/pptx/` | python-pptx build + 17-check validator + chart/table injectors |
-| `renderers/html/` | HTML embed / verify / screenshot toolchain (Node, zero-dep) |
+| `renderers/html/` | HTML toolchain (Node, zero-dep): embed · verify · agent-browser inspect · screenshot |
 | `pipeline/` | Stage docs: storyline · storyboard · render · qa · learning |
 
 ## Status
