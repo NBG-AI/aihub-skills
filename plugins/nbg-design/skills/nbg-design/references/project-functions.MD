@@ -197,28 +197,31 @@ node "<skill-root>/scripts/export-pdf.mjs" my-deck.html -o out/my-deck.pdf --bro
 pdftoppm -r 72 -png my-deck.pdf pages/my-deck && pdfinfo my-deck.pdf
 ```
 
-## In-Deck Right-Click "Export to PDF" Menu
+## In-Deck Right-Click Menu (Text Editing, PDF Export, Saved Copy)
 
 ### Function
-Let anyone who receives the HTML deck export it to PDF from the browser — right-click → *Export to PDF* → *Save as PDF* — with the same one-page-per-slide, aesthetics-preserved result as `scripts/export-pdf.mjs`, and no tooling installed.
+Let anyone who receives the HTML deck (a) edit any text on a slide in place — double-click it or right-click → *Edit text* — keep the edits across reloads and download the deck with them applied, and (b) export the deck to PDF from the browser — right-click → *Export to PDF* → *Save as PDF* — with the same one-page-per-slide, aesthetics-preserved result as `scripts/export-pdf.mjs`. No tooling installed.
 
 ### Script
-- `scripts/add-pdf-menu.mjs` — inlines the menu (idempotent; `--remove` strips it)
+- `scripts/add-deck-menu.mjs` — inlines the menu (idempotent; upgrades the v1.4 PDF-only block; `--remove` strips it)
 - `scripts/lib/print-layout.js` — print-layout shim shared with the CLI exporter (prepare + restore)
-- `scripts/lib/pdf-menu.js` — the menu UI and the print orchestration
+- `scripts/lib/deck-menu.js` — the menu UI, in-place editing, persistence, saved copy, print orchestration
 
 ### Functional Requirements
-- Add the menu to every delivered HTML deck after `embed-assets.mjs` and before `verify-deck.mjs --strict`; the strict gate requires it unless the user declined it (`--no-pdf-menu`).
-- Keep the deck fully self-contained: one inline `<script id="nbg-pdf-menu-script" data-nbg-pdf-menu="<version>">`, no external references; re-running upgrades an older block.
-- On right-click (except on links/form fields) show an NBG-styled menu with *Export to PDF* and *Cancel*; Escape or a click outside closes it; deck keyboard shortcuts stay suppressed while it is open.
-- *Export to PDF* applies the shared print layout, opens the browser print dialog, and restores the interactive deck (classes, inline styles, attributes, viewport-fit scaling) when the dialog closes; Ctrl/Cmd+P and the browser Print command behave the same through `beforeprint`/`afterprint`.
+- Add the menu to every delivered HTML deck after `embed-assets.mjs` and before `verify-deck.mjs --strict`; the strict gate requires it unless the user declined it (`--no-deck-menu`) and warns on the older PDF-only block.
+- Keep the deck fully self-contained: one inline `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">`, no external references; re-running upgrades an older block.
+- Right-click (except on links/form fields) shows an NBG-styled menu: *Edit text* when the click landed on text, *Export to PDF*, and — once edits exist — *Save edited copy* and *Discard edits*, plus *Cancel*; Escape or a click outside closes it; deck keyboard shortcuts stay suppressed while it is open.
+- Text editing: double-click any text on a slide or use *Edit text*; the whole text block (inline accent spans intact) becomes `contenteditable` with a teal outline; Enter or a click outside applies, Esc cancels, Shift+Enter inserts a line break, Ctrl/Cmd+Z undoes; formatting shortcuts are blocked, paste/drop insert plain text, and every element the browser wraps around typed text (other than `<br>`) is unwrapped on commit; the element's CSS, `white-space` and box do not change while editing; deck shortcuts are suppressed.
+- Persist edits as `{ path, original, html }` in `localStorage` under `nbg-deck-edits:<pathname>#<title>`; re-apply them on load, dropping entries whose original markup no longer matches.
+- *Save edited copy* downloads `<name>-edited.html`: the edits applied to a pristine snapshot of the deck taken at load, so the copy loads like the original, stays self-contained and carries the menu. *Discard edits* restores every original text and clears storage.
+- *Export to PDF* commits any open edit, applies the shared print layout, opens the browser print dialog, and restores the interactive deck (classes, inline styles, attributes, viewport-fit scaling) when the dialog closes; Ctrl/Cmd+P and the browser Print command behave the same through `beforeprint`/`afterprint`.
 - Preset the page (`@page { size: <slide box>; margin: 0 }`, `print-color-adjust: exact`) so the viewer only chooses *Save as PDF*.
-- Expose `window.nbgPdf = { prepare, restore, exportPdf, version }`; honour `window.__nbgPdfExternal` so an external driver can print without the hooks interfering.
-- Never change a slide's own design; the menu lives outside the slides and is hidden in the print layout.
+- Expose `window.nbgDeck = { version, pdf, edit, resolveTextTarget }` (and the `window.nbgPdf` alias); honour `window.__nbgPdfExternal` so an external driver can print without the hooks interfering.
+- The menu edits text only; layout, images, colours and structure remain the skill's job. The CLI exporter prints the file on disk, not unsaved in-browser edits.
 
 ### How to Use
 ```bash
-node "<skill-root>/scripts/add-pdf-menu.mjs" my-deck.html          # add / upgrade
-node "<skill-root>/scripts/add-pdf-menu.mjs" my-deck.html --remove # strip (only if the user declines it)
+node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html          # add / upgrade
+node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html --remove # strip (only if the user declines it)
 ```
-Tell the recipient: right-click anywhere on the deck → *Export to PDF* → choose *Save as PDF* in the dialog.
+Tell the recipient in one line: double-click any text to edit it (Enter applies, Esc cancels); right-click for *Export to PDF* and *Save edited copy*.

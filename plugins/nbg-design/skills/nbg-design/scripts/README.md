@@ -13,6 +13,12 @@ skill root), never the current working directory — so they work from any cwd a
 machine, as long as the **whole skill folder** (including `NBG-Design/assets/` and
 `scripts/lib/`) was copied, not just `SKILL.md`.
 
+Skills are commonly reached **through a symlink** (e.g. `<project>/.claude/skills/nbg-design`
+→ the plugin checkout). Every script works when invoked through such a link: the one script
+with a "run as CLI only when invoked directly" guard (`add-deck-menu.mjs`) compares real paths,
+because Node resolves `import.meta.url` to the real file while `process.argv[1]` keeps the
+symlinked path. `add-pdf-menu.mjs` remains as a compatibility wrapper for the same CLI.
+
 ## 1. Embed assets — `embed-assets.mjs`
 
 Author the deck with `{{TOKEN}}` placeholders instead of inline data URIs, then run:
@@ -47,8 +53,8 @@ images.
 **`--strict` also fails on:** fewer than `--min-images` embedded images (default 2); file
 smaller than `--min-bytes` (default 200000) — a photo-less deck is the classic tell; bare
 `>NBG<` / `>NPG<` text nodes that may be a text/box substitute for the logo lockup; a missing
-right-click "Export to PDF" menu (section 5; `--no-pdf-menu` only when the user declined it).
-A present-but-incomplete menu block is a hard failure in every mode.
+right-click deck menu (section 5; `--no-deck-menu` only when the user declined it) or the
+older PDF-only v1.4 block. A present-but-incomplete menu block is a hard failure in every mode.
 
 ## 3. Screenshot the deck — `screenshot-deck.mjs` (optional, needs a browser)
 
@@ -127,40 +133,61 @@ pdfinfo my-deck.pdf                                # Pages: N, Page size: 1440 x
 pdftotext -l 1 my-deck.pdf -                       # text is selectable (vector), not a bitmap
 ```
 
-## 5. In-deck right-click "Export to PDF" menu — `add-pdf-menu.mjs`
+## 5. In-deck right-click menu — `add-deck-menu.mjs`
 
-Gives the people who receive the HTML the same export with no tooling: right-click anywhere
-on the deck → **Export to PDF** → choose **Save as PDF** in the browser's print dialog.
+Gives the people who receive the HTML in-place text editing and the PDF export with no tooling.
 
 ```
-node "<skill-root>/scripts/add-pdf-menu.mjs" my-deck.html [-o <out.html>] [--remove]
+node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--remove]
 ```
 
-- Inlines one `<script id="nbg-pdf-menu-script" data-nbg-pdf-menu="<version>">` before the
+- Inlines one `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">` before the
   last `</body>`: `lib/print-layout.js` (the print-layout shim shared with `export-pdf.mjs`)
-  followed by `lib/pdf-menu.js` (the UI). The deck stays fully self-contained (~17 KB more).
-- Idempotent: re-running reports `already current`, or replaces an older block (`upgraded`).
-  `--remove` strips it.
-- The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Export to PDF* and
-  *Cancel*; Escape / click outside closes it; arrow keys move; deck shortcuts are suppressed
-  while it is open; right-clicking a link or form field keeps the browser's native menu.
-- *Export to PDF*: applies the print layout (every slide in flow, page box = slide box, zero
-  margins, backgrounds forced, animations settled), calls `window.print()`, and restores the
-  interactive deck — classes, inline styles, attributes and the viewport-fit scaling — when the
-  dialog closes. Ctrl/Cmd+P and the browser's Print command use the same
-  `beforeprint`/`afterprint` hooks, so any print of the deck is faithful.
-- `window.nbgPdf = { prepare, restore, exportPdf, version }` is exposed for tests; an external
-  driver sets `window.__nbgPdfExternal = true` to keep the hooks idle (`export-pdf.mjs` does).
+  followed by `lib/deck-menu.js` (menu UI, editing, persistence, saved copy, print
+  orchestration). The deck stays fully self-contained (~20 KB more).
+- Idempotent: re-running reports `already current`, refreshes a same-version block, or
+  upgrades an older one (including the v1.4 `nbg-pdf-menu-script` block). `--remove` strips it.
+- The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Edit text* (when the
+  right-click landed on text), *Export to PDF*, and — once edits exist — *Save edited copy*
+  and *Discard edits*, plus *Cancel*. Escape / click outside closes it; arrow keys move; deck
+  shortcuts are suppressed while it is open; right-clicking a link or form field keeps the
+  browser's native menu.
+- **Edit text** / **double-click**: the whole text block (accent spans inside a title stay
+  intact) becomes `contenteditable` with a teal outline; Enter or a click outside applies, Esc
+  cancels, Shift+Enter inserts a line break, Ctrl/Cmd+Z undoes. Formatting shortcuts are blocked
+  through `beforeinput`, paste/drop insert plain text, and every element the browser wraps
+  around typed text (other than `<br>`) is unwrapped on commit — original descendants are
+  tagged during the edit so they can be told apart. The slide's CSS is never touched, and the
+  element's `white-space` and box do not change while editing (rich mode, not `plaintext-only`,
+  which would force `pre-wrap` and re-flow the text).
+- **Persistence**: edits are recorded as `{ path, original, html }` (child-index path from the
+  root) and stored in `localStorage` under `nbg-deck-edits:<pathname>#<title>`; a reload
+  re-applies them, dropping entries whose original markup no longer matches.
+- **Save edited copy**: applies the edits to a pristine snapshot of the deck taken when the
+  script ran (`DOMParser`; path lookup with a unique-markup fallback) and downloads
+  `<name>-edited.html` — loads exactly like the original, still self-contained, still carrying
+  the menu. **Discard edits** restores the originals and clears storage.
+- **Export to PDF**: commits any open edit, applies the print layout (every slide in flow, page
+  box = slide box, zero margins, backgrounds forced, animations settled), calls
+  `window.print()`, and restores the interactive deck — classes, inline styles, attributes and
+  the viewport-fit scaling — when the dialog closes. Ctrl/Cmd+P and the browser's Print command
+  use the same `beforeprint`/`afterprint` hooks, so any print of the deck is faithful.
+- `window.nbgDeck = { version, pdf: { prepare, restore, exportPdf }, edit: { start, commit,
+  cancel, isEditing, list, buildEditedHtml, save, discard }, resolveTextTarget }` is exposed
+  (`window.nbgPdf` aliases the pdf part); an external driver sets
+  `window.__nbgPdfExternal = true` to keep the print hooks idle (`export-pdf.mjs` does).
 - Chrome and Edge honour the page's `@page { size: 1920px 1080px; margin: 0 }` in the dialog;
   the viewer only has to pick *Save as PDF* (keep Scale 100 %). Safari's `@page size` support
   is partial — the CLI exporter remains the deterministic reference.
+- The CLI exporter prints the file on disk, not a viewer's unsaved edits: to get a PDF of an
+  edited deck, export the saved `-edited.html` copy.
 
 ## Recommended workflow
 
 ```
 # 1. author my-deck.html using {{TOKEN}} placeholders for every image
 node "<skill-root>/scripts/embed-assets.mjs"    my-deck.html
-node "<skill-root>/scripts/add-pdf-menu.mjs"    my-deck.html            # standard: right-click "Export to PDF"
+node "<skill-root>/scripts/add-deck-menu.mjs"   my-deck.html            # standard: right-click menu (edit text / export PDF)
 node "<skill-root>/scripts/verify-deck.mjs"     my-deck.html --strict   # mandatory, headless-safe
 node "<skill-root>/scripts/screenshot-deck.mjs" my-deck.html            # optional, when a browser exists
 # then READ the PNGs and inspect them
@@ -170,5 +197,5 @@ node "<skill-root>/scripts/export-pdf.mjs"      my-deck.html            # when a
 
 `<skill-root>` is the directory that contains `SKILL.md`. Shared code under `scripts/lib/`:
 `find-browser.mjs` (browser locator), `cdp.mjs` (DevTools-protocol client), `print-layout.js`
-(print-layout shim, browser JS, used by the exporter and inlined by the menu), `pdf-menu.js`
-(menu UI, browser JS).
+(print-layout shim, browser JS, used by the exporter and inlined by the menu), `deck-menu.js`
+(menu UI, text editing, persistence, saved copy, print orchestration; browser JS).

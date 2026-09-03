@@ -41,6 +41,19 @@
 
 ## Completed Items
 
+### 2026-09-03 — Fixed: menu injector silently did nothing when invoked through a symlinked skill path
+- Detected: Reported by a teammate session running the pipeline from a project whose `.claude/skills/nbg-design` is a symlink to the plugin checkout: `add-pdf-menu.mjs` exited 0 with no output, the deck got no menu, and `verify-deck.mjs --strict` failed with "menu missing".
+- Cause: The "run as CLI only when invoked directly" guard compared `resolve(process.argv[1])` (the symlinked path) with `import.meta.url` (which Node resolves to the real path), so `main()` never ran. The other scripts have no such guard and were unaffected.
+- Solution: `add-deck-menu.mjs` (the injector's current name) compares `realpathSync()` of both sides, falling back to the plain comparison if either path cannot be resolved. `add-pdf-menu.mjs` is kept as a compatibility wrapper that runs the same CLI (with a one-line notice on stderr). `scripts/README.md` notes that skills are commonly symlinked.
+- Verification: Invoked through `<dir>/.claude/skills/nbg-design -> <plugin>` with an absolute path, with a relative path from another cwd, and via the real path: menu added each time; importing the module does not run the CLI; `verify-deck.mjs --strict` passes on the result.
+
+### 2026-09-03 — Added in-place text editing and "Save edited copy" to the in-deck menu (skill v1.5.0)
+- Detected: User asked for the generated HTML presentation to let users edit a text element in place through the right-click menu or by double-clicking it.
+- Affected files: `scripts/lib/deck-menu.js` (new; replaces `pdf-menu.js`), `scripts/add-deck-menu.mjs` (new; replaces `add-pdf-menu.mjs`, upgrades the v1.4 block), `scripts/verify-deck.mjs` (`--no-deck-menu`, legacy-block warning), `scripts/README.md`, `SKILL.md`, `config/pi-agent-nbg-design.yaml`, references, plugin/marketplace manifests (1.4.0 → 1.5.0).
+- Solution: Double-click (or right-click → Edit text) makes the whole text block `contenteditable`; Enter/click outside applies, Esc cancels; formatting, rich paste and drops are blocked via `beforeinput`; browser-inserted wrappers are unwrapped on commit. Edits persist in `localStorage` and re-apply on reload; "Save edited copy" applies them to a pristine load-time snapshot and downloads `<name>-edited.html`; "Discard edits" restores the originals. PDF export commits an open edit first.
+- Defect found and fixed during verification: `contenteditable="plaintext-only"` makes Chrome apply `white-space: pre-wrap`, so a title's source newlines rendered as line breaks while editing (text jumped, a stray empty line appeared). Switched to rich `contenteditable` with the `beforeinput` whitelist and commit-time clean-up; the test now asserts that `white-space` and the box height are unchanged during editing.
+- Verification: `test_scripts/deck-menu-roundtrip.mjs` (development workspace) on the three real decks — all checks pass; the saved copies pass `verify-deck.mjs --strict` and `export-pdf.mjs`, and the edited text appears on page 1 of their PDFs.
+
 ### 2026-09-03 — Added the in-deck right-click "Export to PDF" menu (skill v1.4.0)
 - Detected: User asked for the HTML presentation itself to offer a right-click menu supporting the PDF export.
 - Affected files: `scripts/add-pdf-menu.mjs` (new), `scripts/lib/print-layout.js` (new, extracted from export-pdf.mjs, with restore), `scripts/lib/pdf-menu.js` (new), `scripts/lib/cdp.mjs` (new, extracted), `scripts/export-pdf.mjs`, `scripts/verify-deck.mjs` (menu check, `--no-pdf-menu`), `scripts/README.md`, `SKILL.md`, `config/pi-agent-nbg-design.yaml`, references, plugin/marketplace manifests (1.3.0 → 1.4.0).

@@ -27,17 +27,17 @@ Usage: node verify-deck.mjs <deck.html> [--strict] [--min-images N] [--min-bytes
                     Use this before delivering any deck.
   --min-images N    Minimum embedded images expected (default 2).
   --min-bytes N     Minimum file size in bytes (default 200000).
-  --no-pdf-menu     Do not require the in-deck right-click "Export to PDF" menu
-                    (only when the user explicitly declined it).
+  --no-deck-menu    Do not require the in-deck right-click menu (Edit text / Export to PDF /
+                    Save edited copy) — only when the user explicitly declined it.
 
 Exit code 0 = pass, 1 = fail.`;
 
 function parseArgs(argv) {
-  const a = { _: [], strict: false, minImages: 2, minBytes: 200000, noPdfMenu: false };
+  const a = { _: [], strict: false, minImages: 2, minBytes: 200000, noDeckMenu: false };
   for (let i = 0; i < argv.length; i++) {
     const x = argv[i];
     if (x === '--strict') a.strict = true;
-    else if (x === '--no-pdf-menu') a.noPdfMenu = true;
+    else if (x === '--no-deck-menu' || x === '--no-pdf-menu') a.noDeckMenu = true;
     else if (x === '--min-images') a.minImages = parseInt(argv[++i], 10);
     else if (x === '--min-bytes') a.minBytes = parseInt(argv[++i], 10);
     else if (x === '-h' || x === '--help') a.help = true;
@@ -97,12 +97,14 @@ function main() {
     warn.push(`${nbgText.length} bare ">NBG/NPG<" text node(s) at line(s) ${nbgText.slice(0, 12).join(', ')}${nbgText.length > 12 ? '…' : ''} — verify none is a text/box substitute for the bundled logo lockup.`);
   }
 
-  // 7 — in-deck right-click "Export to PDF" menu (added by add-pdf-menu.mjs)
-  if (!args.noPdfMenu) {
-    const menuVersion = (html.match(/<script id="nbg-pdf-menu-script" data-nbg-pdf-menu="(\d+)">/) || [])[1];
-    if (!menuVersion) warn.push('Right-click "Export to PDF" menu missing — run add-pdf-menu.mjs on the deck (or pass --no-pdf-menu if the user declined it).');
-    else if (!html.includes('function nbgPreparePrintLayout') || !html.includes('window.nbgPdf')) {
-      hard.push('The nbg-pdf-menu block is present but incomplete — re-run add-pdf-menu.mjs.');
+  // 7 — in-deck right-click menu: Edit text / Export to PDF / Save edited copy (added by add-deck-menu.mjs)
+  if (!args.noDeckMenu) {
+    const current = (html.match(/<script id="nbg-deck-menu-script" data-nbg-deck-menu="(\d+)">/) || [])[1];
+    const legacy = (html.match(/<script id="nbg-pdf-menu-script" data-nbg-pdf-menu="(\d+)">/) || [])[1];
+    if (!current && !legacy) warn.push('Right-click deck menu (Edit text / Export to PDF) missing — run add-deck-menu.mjs on the deck (or pass --no-deck-menu if the user declined it).');
+    else if (!current) warn.push(`Deck carries the older PDF-only menu (v${legacy}) — run add-deck-menu.mjs to upgrade to the menu with in-place text editing.`);
+    else if (!html.includes('function nbgPreparePrintLayout') || !html.includes('window.nbgDeck')) {
+      hard.push('The nbg-deck-menu block is present but incomplete — re-run add-deck-menu.mjs.');
     }
   }
 

@@ -1,6 +1,6 @@
 # nbg-design
 
-Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click "Export to PDF" menu), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 
 ## Overview
 
@@ -10,9 +10,13 @@ Output formats: `html` (default, fully self-contained), `pdf` (exported from the
 `scripts/export-pdf.mjs` — one page per slide at the 1920×1080 artboard, vector text, backgrounds and
 embedded images preserved; needs Chrome/Chromium/Edge on the host), and `pptx` (native recreation).
 
-Every delivered HTML deck also carries a right-click menu (`scripts/add-pdf-menu.mjs`): viewers choose
-*Export to PDF*, then *Save as PDF* in the browser's print dialog, and get the same one-page-per-slide
-PDF with no tooling installed.
+Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-menu.mjs`):
+
+- **Edit text** — double-click any text on a slide (or right-click it → *Edit text*) and edit it in
+  place; Enter applies, Esc cancels. Edits survive a reload and **Save edited copy** downloads the deck
+  with the changes baked in; **Discard edits** restores the originals.
+- **Export to PDF** — choose *Save as PDF* in the browser's print dialog and get the same
+  one-page-per-slide PDF as the CLI exporter, with no tooling installed.
 
 ## Installation
 

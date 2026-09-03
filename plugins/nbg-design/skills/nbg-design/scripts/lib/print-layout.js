@@ -1,7 +1,7 @@
 /* NBG Design — print-layout shim shared by export-pdf.mjs (evaluated in headless Chrome)
- * and by the in-deck right-click menu (add-pdf-menu.mjs). Plain browser JavaScript, no
- * module syntax: export-pdf.mjs reads this file as text and evaluates it in the page, and
- * add-pdf-menu.mjs inlines it into the deck. Keep it dependency-free and ES2017-compatible.
+ * and by the in-deck right-click menu (add-deck-menu.mjs / lib/deck-menu.js). Plain browser
+ * JavaScript, no module syntax: export-pdf.mjs reads this file as text and evaluates it in the
+ * page, and add-deck-menu.mjs inlines it into the deck. Keep it dependency-free and ES2017-compatible.
  *
  * nbgPreparePrintLayout(opts) turns the interactive deck into a print layout WITHOUT
  * touching any slide's own design:
