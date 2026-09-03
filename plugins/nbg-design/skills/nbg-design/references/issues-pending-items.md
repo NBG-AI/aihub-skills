@@ -41,6 +41,13 @@
 
 ## Completed Items
 
+### 2026-09-03 — Added the in-deck right-click "Export to PDF" menu (skill v1.4.0)
+- Detected: User asked for the HTML presentation itself to offer a right-click menu supporting the PDF export.
+- Affected files: `scripts/add-pdf-menu.mjs` (new), `scripts/lib/print-layout.js` (new, extracted from export-pdf.mjs, with restore), `scripts/lib/pdf-menu.js` (new), `scripts/lib/cdp.mjs` (new, extracted), `scripts/export-pdf.mjs`, `scripts/verify-deck.mjs` (menu check, `--no-pdf-menu`), `scripts/README.md`, `SKILL.md`, `config/pi-agent-nbg-design.yaml`, references, plugin/marketplace manifests (1.3.0 → 1.4.0).
+- Solution: The print-layout shim is shared between the CLI exporter and the deck; the menu runs prepare → `window.print()` → restore, and `beforeprint`/`afterprint` hooks cover Ctrl/Cmd+P. Every delivered deck gets the block; the strict gate requires it.
+- Defects found and fixed during verification: (1) the injected script block and the runtime menu element both used id `nbg-pdf-menu`, so `getElementById` returned the script — the block is now `nbg-pdf-menu-script`; (2) Chrome fires `beforeprint`/`afterprint` around DevTools `Page.printToPDF` as well, which made the hooks restore under an external driver — `window.__nbgPdfExternal` keeps them idle; (3) the CDP helper's `exited` promise could become an unhandled rejection after `close()` — now pre-handled.
+- Verification: `test_scripts/pdf-menu-roundtrip.mjs` (development workspace) on the three real decks: menu opens/closes, native print path gives pages = slides, DOM `outerHTML` and computed transforms identical after restore, explicit API path identical; PDFs printed through the menu path pixel-match the browser renders (≤ 0.16 % solid difference). `add-pdf-menu.mjs` idempotency and `--remove` verified; `export-pdf.mjs` still passes on menu-carrying decks.
+
 ### 2026-09-03 — Added PDF export that preserves the HTML deck's aesthetics (skill v1.3.0)
 - Detected: User requested that the skill support exporting a presentation to PDF "without changes in aesthetics".
 - Affected files: `scripts/export-pdf.mjs` (new), `scripts/lib/find-browser.mjs` (new, shared), `scripts/screenshot-deck.mjs`, `scripts/README.md`, `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `references/project-design.md`, `references/project-functions.MD`, `references/configuration-guide.md`, plugin/marketplace manifests (1.2.0 → 1.3.0).

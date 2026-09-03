@@ -1,6 +1,6 @@
 ---
 name: nbg-design
-description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides, slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click "Export to PDF" menu), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 ---
 
 # NBG Design
@@ -102,12 +102,15 @@ Hand-pasting large base64 blobs is the step that most often fails in non-interac
 2. **Embed deterministically.** From any working directory:
    `node "<skill-root>/scripts/embed-assets.mjs" <deck>.html`
    The script resolves the bundled assets relative to itself (not the cwd), so it works on any machine. It replaces every token with the verbatim `data:` URI and fails loudly if an asset is missing.
-3. **Verify before delivery (browser-free — works headless).**
+3. **Add the in-deck right-click “Export to PDF” menu (standard for every delivered deck).**
+   `node "<skill-root>/scripts/add-pdf-menu.mjs" <deck>.html`
+   Inlines one self-contained `<script id="nbg-pdf-menu-script">` before the last `</body>` (idempotent; re-running upgrades an older menu). Viewers right-click the deck and choose *Export to PDF*; the deck prints itself one page per slide at 1920×1080 with backgrounds preset, then returns to interactive mode. See "PDF output → In-deck right-click menu". Skip only if the user explicitly declines the menu, and then verify with `--no-pdf-menu`.
+4. **Verify before delivery (browser-free — works headless).**
    `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict`
-   It exits non-zero if any image is not a `data:` URI, if forbidden `file://`/absolute/relative paths remain, if tokens are unresolved, or (in `--strict`) if the deck is suspiciously small / photo-less or contains bare `NBG`/`NPG` text that may be a logo substitute. **Never deliver a deck that fails this gate.**
-4. **If the skill was moved to another machine**, confirm the **whole** skill folder travelled, including `NBG-Design/assets/` (the `*.datauri.txt` files). If `embed-assets.mjs` reports a missing assets directory, that is the root cause — copy the full skill, not just `SKILL.md`.
+   It exits non-zero if any image is not a `data:` URI, if forbidden `file://`/absolute/relative paths remain, if tokens are unresolved, or (in `--strict`) if the deck is suspiciously small / photo-less, contains bare `NBG`/`NPG` text that may be a logo substitute, or lacks the right-click PDF menu. **Never deliver a deck that fails this gate.**
+5. **If the skill was moved to another machine**, confirm the **whole** skill folder travelled, including `NBG-Design/assets/` (the `*.datauri.txt` files) and `scripts/lib/`. If `embed-assets.mjs` reports a missing assets directory, that is the root cause — copy the full skill, not just `SKILL.md`.
 
-5. **Optional visual check when a browser exists.** On a host with Chrome/Chromium/Edge, also capture screenshots:
+6. **Optional visual check when a browser exists.** On a host with Chrome/Chromium/Edge, also capture screenshots:
    `node "<skill-root>/scripts/screenshot-deck.mjs" <deck>.html`
    It auto-detects a browser, navigates each slide (works for both hash-based and `showSlide`-based decks), and writes one PNG per slide at 1366×768 and 1440×900 into `test_scripts/screenshots/`. Then **read each PNG** and inspect for clipping, overflow, element overlap, missing logo/photos, and brand alignment. If no browser is found it exits cleanly (code 3) — on a headless host rely on the `verify-deck.mjs --strict` gate instead.
 
@@ -129,6 +132,15 @@ A PDF deliverable is **always derived from the finished, verified HTML deck** �
    The script opens the deck in headless Chrome/Chromium/Edge (auto-detected; `--browser <path>` or `NBG_BROWSER` / `CHROME_BIN` to override), lifts the deck's navigation and viewport-scaling layer without touching any slide's own CSS, makes every top-level `.slide` visible in flow, settles fonts/images/animations, and prints one page per slide at the slide's own box (20 × 11.25 in for the 1920×1080 artboard, zero margins, backgrounds forced). It then verifies that the PDF page count equals the slide count and exits non-zero on any mismatch.
 3. Inspect: rasterise a few pages (`pdftoppm -r 72 -png <deck>.pdf <prefix>` when poppler is available, otherwise open the PDF) and **read them** next to the browser screenshots. Cover, one divider, one dense content slide and the last slide are the minimum set. Anything that differs from the HTML render — a missing background, an animation stuck at its start state, a clipped card, a re-flowed line — is a defect to fix in the deck, then re-export.
 4. Deliver the PDF together with the HTML it was exported from (unless the user explicitly wants only the PDF) and report the exporter output line (slides / pages / page box).
+
+### In-deck right-click menu (every delivered HTML deck)
+
+Viewers of the HTML deck get the same export without any tooling: `scripts/add-pdf-menu.mjs` inlines a right-click menu (NBG-styled: white panel, teal accent, Aptos stack) with **Export to PDF**. Choosing it applies the very same print-layout code the CLI exporter uses (`scripts/lib/print-layout.js`, inlined), opens the browser's print dialog, and restores the interactive deck when the dialog closes. In the dialog the viewer picks **Save as PDF** (Chrome / Edge); paper size (1920×1080), zero margins and background printing are preset by the page, so the result is one page per slide, identical to the CLI export. Ctrl/Cmd+P and the browser's own Print command go through the same prepare/restore hooks. Escape or a click outside closes the menu; right-clicking a link or form field keeps the browser's native menu.
+
+- Run `add-pdf-menu.mjs` after `embed-assets.mjs` and before `verify-deck.mjs --strict` (which requires the menu unless `--no-pdf-menu` is passed because the user declined it).
+- The menu is self-contained and adds ~17 KB; it lives outside the slides, so it never appears in screenshots' slide area, PDFs, or the print layout.
+- The agent-produced PDF deliverable is still made with `scripts/export-pdf.mjs` (deterministic, verified page count); the menu is for the people who receive the HTML.
+- When mentioning the feature to the user, say: right-click anywhere on the deck → *Export to PDF* → choose *Save as PDF* in the dialog.
 
 ### Rules
 
@@ -161,7 +173,11 @@ Scripts (zero-dependency Node, see `scripts/README.md`):
 - `scripts/verify-deck.mjs` — browser-free pre-delivery gate (mandatory, `--strict`).
 - `scripts/screenshot-deck.mjs` — per-slide PNGs at the required viewports (needs a browser).
 - `scripts/export-pdf.mjs` — HTML deck → PDF, one page per slide, aesthetics preserved (needs a browser).
+- `scripts/add-pdf-menu.mjs` — inlines the right-click "Export to PDF" menu into a deck (idempotent; `--remove` strips it).
 - `scripts/lib/find-browser.mjs` — shared Chrome/Chromium/Edge locator.
+- `scripts/lib/cdp.mjs` — shared DevTools-protocol client (launch, navigate, evaluate, print).
+- `scripts/lib/print-layout.js` — the print-layout shim shared by the exporter and the in-deck menu (browser JS).
+- `scripts/lib/pdf-menu.js` — the in-deck menu UI (browser JS, inlined by `add-pdf-menu.mjs`).
 
 Core configuration and references:
 
@@ -219,6 +235,7 @@ Do not use or expect these adjacent project artifacts unless the user explicitly
 Before delivering NBG slide work:
 
 - For HTML output, run `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict` and confirm it passes. This is mandatory and works on a headless host. Never report a deck complete while it fails. (Embed assets with `scripts/embed-assets.mjs` first; see "Deterministic embedding & verification".)
+- For HTML output, confirm the right-click "Export to PDF" menu was added with `scripts/add-pdf-menu.mjs` (the strict gate checks for it) and tell the user how to use it, unless the user declined it.
 - Confirm every slide has a clear purpose.
 - Confirm colors match the bundled NBG palette.
 - Confirm the language is consistent with the request or the approved English default.

@@ -101,7 +101,8 @@ Confirm these paths exist:
 - `NBG-Design/assets/logo-knockout.png`
 - `NBG-Design/assets/logo-small.png`
 - `NBG-Design/assets/*.datauri.txt` (one per logo and photo)
-- `scripts/embed-assets.mjs`, `scripts/verify-deck.mjs`, `scripts/screenshot-deck.mjs`, `scripts/export-pdf.mjs`, `scripts/lib/find-browser.mjs`
+- `scripts/embed-assets.mjs`, `scripts/verify-deck.mjs`, `scripts/screenshot-deck.mjs`, `scripts/export-pdf.mjs`, `scripts/add-pdf-menu.mjs`
+- `scripts/lib/find-browser.mjs`, `scripts/lib/cdp.mjs`, `scripts/lib/print-layout.js`, `scripts/lib/pdf-menu.js`
 - `test_scripts/screenshots/`
 
 ### Machine-specific path scan

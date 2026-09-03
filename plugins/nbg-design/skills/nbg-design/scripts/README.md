@@ -46,7 +46,9 @@ images.
 
 **`--strict` also fails on:** fewer than `--min-images` embedded images (default 2); file
 smaller than `--min-bytes` (default 200000) — a photo-less deck is the classic tell; bare
-`>NBG<` / `>NPG<` text nodes that may be a text/box substitute for the logo lockup.
+`>NBG<` / `>NPG<` text nodes that may be a text/box substitute for the logo lockup; a missing
+right-click "Export to PDF" menu (section 5; `--no-pdf-menu` only when the user declined it).
+A present-but-incomplete menu block is a hard failure in every mode.
 
 ## 3. Screenshot the deck — `screenshot-deck.mjs` (optional, needs a browser)
 
@@ -81,8 +83,9 @@ node "<skill-root>/scripts/export-pdf.mjs" my-deck.html [-o my-deck.pdf] [--size
 ```
 
 How it works: the deck is opened in headless Chrome/Chromium/Edge and driven over the
-DevTools protocol (`--remote-debugging-pipe`, so nothing to install). A shim evaluated in
-the page lifts the **host layer only** — navigation toggles (`.active` / `.hidden` / inline
+DevTools protocol (`--remote-debugging-pipe`, so nothing to install). A shim
+(`lib/print-layout.js`, the same code the in-deck menu inlines) evaluated in the page lifts
+the **host layer only** — navigation toggles (`.active` / `.hidden` / inline
 `display` / `[hidden]`), the viewport-fit wrappers (scaled `#deck` / `.slide-wrap`, fixed
 `#stage`, flex centering), non-slide chrome (buttons, counters) — makes every top-level
 `.slide` visible in normal flow, jumps CSS animations/transitions to their end state,
@@ -124,11 +127,40 @@ pdfinfo my-deck.pdf                                # Pages: N, Page size: 1440 x
 pdftotext -l 1 my-deck.pdf -                       # text is selectable (vector), not a bitmap
 ```
 
+## 5. In-deck right-click "Export to PDF" menu — `add-pdf-menu.mjs`
+
+Gives the people who receive the HTML the same export with no tooling: right-click anywhere
+on the deck → **Export to PDF** → choose **Save as PDF** in the browser's print dialog.
+
+```
+node "<skill-root>/scripts/add-pdf-menu.mjs" my-deck.html [-o <out.html>] [--remove]
+```
+
+- Inlines one `<script id="nbg-pdf-menu-script" data-nbg-pdf-menu="<version>">` before the
+  last `</body>`: `lib/print-layout.js` (the print-layout shim shared with `export-pdf.mjs`)
+  followed by `lib/pdf-menu.js` (the UI). The deck stays fully self-contained (~17 KB more).
+- Idempotent: re-running reports `already current`, or replaces an older block (`upgraded`).
+  `--remove` strips it.
+- The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Export to PDF* and
+  *Cancel*; Escape / click outside closes it; arrow keys move; deck shortcuts are suppressed
+  while it is open; right-clicking a link or form field keeps the browser's native menu.
+- *Export to PDF*: applies the print layout (every slide in flow, page box = slide box, zero
+  margins, backgrounds forced, animations settled), calls `window.print()`, and restores the
+  interactive deck — classes, inline styles, attributes and the viewport-fit scaling — when the
+  dialog closes. Ctrl/Cmd+P and the browser's Print command use the same
+  `beforeprint`/`afterprint` hooks, so any print of the deck is faithful.
+- `window.nbgPdf = { prepare, restore, exportPdf, version }` is exposed for tests; an external
+  driver sets `window.__nbgPdfExternal = true` to keep the hooks idle (`export-pdf.mjs` does).
+- Chrome and Edge honour the page's `@page { size: 1920px 1080px; margin: 0 }` in the dialog;
+  the viewer only has to pick *Save as PDF* (keep Scale 100 %). Safari's `@page size` support
+  is partial — the CLI exporter remains the deterministic reference.
+
 ## Recommended workflow
 
 ```
 # 1. author my-deck.html using {{TOKEN}} placeholders for every image
 node "<skill-root>/scripts/embed-assets.mjs"    my-deck.html
+node "<skill-root>/scripts/add-pdf-menu.mjs"    my-deck.html            # standard: right-click "Export to PDF"
 node "<skill-root>/scripts/verify-deck.mjs"     my-deck.html --strict   # mandatory, headless-safe
 node "<skill-root>/scripts/screenshot-deck.mjs" my-deck.html            # optional, when a browser exists
 # then READ the PNGs and inspect them
@@ -136,5 +168,7 @@ node "<skill-root>/scripts/export-pdf.mjs"      my-deck.html            # when a
 # then rasterise a few pages and READ them against the screenshots
 ```
 
-`<skill-root>` is the directory that contains `SKILL.md`. `scripts/lib/find-browser.mjs` is
-the browser locator shared by the two browser-backed scripts.
+`<skill-root>` is the directory that contains `SKILL.md`. Shared code under `scripts/lib/`:
+`find-browser.mjs` (browser locator), `cdp.mjs` (DevTools-protocol client), `print-layout.js`
+(print-layout shim, browser JS, used by the exporter and inlined by the menu), `pdf-menu.js`
+(menu UI, browser JS).
