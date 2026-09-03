@@ -1,7 +1,7 @@
 {
   "name": "nbg-design",
-  "description": "Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, \"Export to PDF\", \"Save edited copy\"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.",
-  "version": "1.9.0",
+  "description": "Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, a structure outline and HTML panel, \"Export to PDF\", \"Save edited copy\"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.",
+  "version": "1.10.0",
   "author": {
     "name": "Giorgos Marinos"
   },

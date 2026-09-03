@@ -50,7 +50,11 @@
  *     the toolbar's Stack list offers the enclosing shapes, the selected one and its child shapes,
  *     Ctrl/Cmd+click on the same spot cycles outward, Tab / Shift+Tab step out / in.
  *
- * HTML panel (menu "Show HTML", toolbar </>, Ctrl/Cmd+Shift+H)
+ * Structure / HTML panel (menu "Show structure" / "Show HTML", toolbar </>, Ctrl/Cmd+Shift+O / H)
+ *   - Outline tab: only the shapes (cards, text blocks, images) nested by containment, with a
+ *     checkbox per row for picking several, All / None, a text filter, kind icons, sizes, group
+ *     badges; click a name selects it alone, Shift+click adds, Ctrl/Cmd+click toggles, Space
+ *     toggles the focused row; the selection is highlighted on the slide and in the list;
  *   - Tree tab: the slide's elements (tag, id, classes, attributes, text previews), synced with the
  *     visual selection both ways — selecting on the slide highlights and reveals the row, clicking a
  *     row selects that exact element on the slide (Shift+click adds, double-click edits its text,
@@ -87,7 +91,7 @@
  */
 (function () {
   if (window.nbgDeck) return;
-  var VERSION = 6;
+  var VERSION = 7;
   var ACCENT = '#003841', CYAN = '#00ADBF', INK = '#0A1416', CREAM = '#F5F8F6', MUTED = '#5B6B6D';
   var FONT = "'Aptos', 'Inter', Helvetica, Arial, sans-serif";
 
@@ -664,6 +668,9 @@
     opts = opts || {};
     var list = [];
     (opts.raw ? els : expandGroups(els)).forEach(function (el) { if (el && list.indexOf(el) < 0) list.push(el); });
+    // a container and something inside it never travel together (a move would apply twice): keep the outer one
+    var nested = list.filter(function (el) { return list.some(function (o) { return o !== el && o.contains(el); }); });
+    if (nested.length) { list = list.filter(function (el) { return nested.indexOf(el) < 0; }); if (opts.toast !== false || nested.length) toast(nested.length + ' inner shape' + (nested.length === 1 ? '' : 's') + ' left out — its container is selected. Ctrl/Cmd+click picks an inner shape on its own.', 3000); }
     if (!list.length) { deselectShape(); return false; }
     if (busy) return false;
     if (editing) commitEdit();
@@ -1166,7 +1173,7 @@
     h += abtn('dist', 'h', 'Distribute horizontally — equal gaps between the shapes (three or more; the first and last stay put — or across the slide)') + abtn('dist', 'v', 'Distribute vertically — equal gaps between the shapes');
     h += '<select data-a="ref" title="Align and distribute relative to the selection’s own box, or to the slide"><option value="selection">to selection</option><option value="slide">to slide</option></select>';
     h += '<i class="nbg-tsep"></i>';
-    h += '<button type="button" data-a="code" title="Show the HTML of this slide: a tree synced with the selection, and the selected element’s editable source (Ctrl/Cmd+Shift+H)">&lt;/&gt;</button>';
+    h += '<button type="button" data-a="code" title="Show the slide’s structure and HTML: an outline with checkboxes for selecting several shapes (Ctrl/Cmd+Shift+O), the element tree (Ctrl/Cmd+Shift+H), and the selected element’s editable source">&lt;/&gt;</button>';
     h += '<i class="nbg-tsep"></i>';
     h += '<button type="button" data-a="group" title="Group the selected shapes so they select, move, resize and align together (Ctrl/Cmd+G)">Group</button>';
     h += '<button type="button" data-a="ungroup" title="Ungroup (Ctrl/Cmd+Shift+G)">Ungroup</button>';
@@ -1245,7 +1252,7 @@
   }
 
   /* ---------- HTML panel: navigable tree + editable source, synced with the visual selection ---------- */
-  var code = null, codeTree = null, codeRaw = null, codeStatus = null, codeTab = 'tree', codeEl = null, codeSlideEl = null;
+  var code = null, codeTree = null, codeOut = null, codeRaw = null, codeStatus = null, codeTab = 'outline', codeEl = null, codeSlideEl = null, outFilter = '';
   var codeOpen = new Set(), codeClosed = new Set(), rawDirty = false, rawFor = null, hover = null, codeRaf = 0, codeObserver = null;
   var TRANSIENT_ATTR = /^(contenteditable|spellcheck|data-nbg-orig)$/;
   function inCode(t) { return !!(code && t && code.contains(t)); }
@@ -1303,7 +1310,7 @@
   function renderTree() {
     if (!code || code.hidden) return;
     var slide = codeSlide(); codeSlideEl = slide;
-    code.querySelector('.nbg-ct').textContent = slide ? 'HTML · slide ' + (slideIndex(slide) + 1) : 'HTML';
+    code.querySelector('.nbg-ct').textContent = slide ? 'Slide ' + (slideIndex(slide) + 1) : 'Slide';
     if (!slide) { codeTree.innerHTML = '<div class="nbg-tr">No slide found.</div>'; return; }
     var keys = selectedKeys(), openKeys = {};
     Object.keys(keys).forEach(function (k) { var el = elByKey(k); while (el && el !== slide) { el = el.parentElement; if (el) openKeys[pathKey(el)] = true; } });
@@ -1312,6 +1319,51 @@
     renderNode(slide, 0, out, keys, openKeys);
     codeTree.innerHTML = out.join('');
     var on = codeTree.querySelector('.nbg-on'); if (on && codeTab === 'tree') on.scrollIntoView({ block: 'nearest' });
+  }
+  /* outline: only the shapes (cards, text blocks, images), nested by containment, with checkboxes */
+  var KIND_ICON = { img: '▨', text: 'T', box: '▭' };
+  function shapeKind(el) { return /^(img|svg|video|canvas|picture)$/i.test(el.tagName) ? 'img' : hasOwnText(el) && !isBoxy(el) ? 'text' : 'box'; }
+  function shapeLabel(el) {
+    if (/^(img|svg|video|canvas|picture)$/i.test(el.tagName)) return el.getAttribute('alt') || el.getAttribute('aria-label') || 'Image';
+    var t = hasOwnText(el) ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+    if (t) return t.length > 56 ? t.slice(0, 53) + '…' : t;
+    var cls = (el.getAttribute('class') || '').trim().split(/\s+/).filter(function (c) { return c && !/^nbg-/.test(c) && c !== 'active'; })[0];
+    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : cls ? '.' + cls : '');
+  }
+  function groupBadges(slide) {   // group id -> G1, G2 … per slide
+    var ids = [], map = {};
+    Array.prototype.forEach.call(slide.querySelectorAll('[data-nbg-group]'), function (m) { var g = m.getAttribute('data-nbg-group'); if (ids.indexOf(g) < 0) ids.push(g); });
+    ids.forEach(function (g, i) { map[g] = 'G' + (i + 1); });
+    return map;
+  }
+  function renderOutlineNode(el, depth, out, keys, badges, slide, filter) {
+    var kids = childShapes(el), key = pathKey(el), label = shapeLabel(el), kind = shapeKind(el);
+    var kidRows = [];
+    kids.forEach(function (k) { renderOutlineNode(k, depth + 1, kidRows, keys, badges, slide, filter); });
+    if (filter && label.toLowerCase().indexOf(filter) < 0 && !kidRows.length) return;
+    var open = kids.length && !codeClosed.has(key);
+    var g = groupId(el), backdrop = isBackdrop(el, slide);
+    out.push('<div class="nbg-tr nbg-or' + (keys[key] ? ' nbg-on' : '') + (isEdited(el) ? ' nbg-ed' : '') + '" data-path="' + esc(key) + '" style="padding-left:' + (depth * 14 + 4) + 'px">' +
+      '<span class="nbg-tw' + (kids.length ? '' : ' nbg-tw-none') + '">' + (kids.length ? (open ? '▾' : '▸') : '·') + '</span>' +
+      '<input type="checkbox" class="nbg-ock" ' + (keys[key] ? 'checked ' : '') + 'aria-label="select" title="Tick to add this shape to the selection, untick to remove it">' +
+      '<span class="nbg-ok nbg-ok-' + kind + '" title="' + (kind === 'img' ? 'image' : kind === 'text' ? 'text block' : 'card / panel / block') + '">' + KIND_ICON[kind] + '</span>' +
+      '<span class="nbg-ol">' + esc(label) + '</span>' +
+      '<span class="nbg-os">' + Math.round(el.offsetWidth) + '×' + Math.round(el.offsetHeight) + '</span>' +
+      (g && badges[g] ? '<span class="nbg-og" title="group ' + esc(g) + '">' + badges[g] + '</span>' : '') +
+      (backdrop ? '<span class="nbg-og nbg-ob" title="fills the slide — not part of Select all">backdrop</span>' : '') +
+      (isEdited(el) ? ' <span class="nbg-dot" title="edited in this browser">●</span>' : '') + '</div>');
+    if (open || filter) kidRows.forEach(function (r) { out.push(r); });
+  }
+  function renderOutline() {
+    if (!code || code.hidden) return;
+    var slide = codeSlide(); codeSlideEl = slide;
+    code.querySelector('.nbg-ct').textContent = slide ? 'Slide ' + (slideIndex(slide) + 1) : 'Slide';
+    if (!slide) { codeOut.innerHTML = '<div class="nbg-tr">No slide found.</div>'; return; }
+    var keys = selectedKeys(), out = [], badges = groupBadges(slide), filter = outFilter.trim().toLowerCase();
+    childShapes(slide).forEach(function (el) { renderOutlineNode(el, 0, out, keys, badges, slide, filter); });
+    codeOut.innerHTML = out.length ? out.join('') : '<div class="nbg-tr nbg-tr-text">' + (filter ? 'Nothing matches “' + esc(outFilter) + '”.' : 'No shapes on this slide.') + '</div>';
+    var cnt = code.querySelector('.nbg-oc'); cnt.textContent = sel.length ? sel.length + ' selected' : '';
+    var on = codeOut.querySelector('.nbg-on'); if (on && codeTab === 'outline') on.scrollIntoView({ block: 'nearest' });
   }
   function renderRaw() {
     if (!code || code.hidden) return;
@@ -1327,7 +1379,7 @@
   function codeRefresh() {
     if (!code || code.hidden) return;
     cancelAnimationFrame(codeRaf);
-    codeRaf = requestAnimationFrame(function () { renderTree(); renderRaw(); });
+    codeRaf = requestAnimationFrame(function () { renderOutline(); renderTree(); renderRaw(); });   // both lists stay consistent whichever tab is shown
   }
   function codeFollow() {   // the element the panel follows: the primary selection or the text being edited
     var el = shape ? shape.el : editing ? editing.el : null;
@@ -1407,29 +1459,35 @@
     code.style.left = Math.max(8, window.innerWidth - code.offsetWidth - 8) + 'px'; code.style.top = '8px';   // docked to the right
   }
   function setTab(tab) {
-    codeTab = tab;
+    codeTab = tab; hoverEl(null);
     Array.prototype.forEach.call(code.querySelectorAll('[data-tab]'), function (b) { b.classList.toggle('nbg-on', b.getAttribute('data-tab') === tab); });
     codeTree.hidden = tab !== 'tree';
+    code.querySelector('.nbg-cout').hidden = tab !== 'outline';
     code.querySelector('.nbg-craw').hidden = tab !== 'code';
     codeRefresh();
   }
   function buildCode() {
     code = document.createElement('div');
     code.id = 'nbg-code'; code.className = 'nbg-panel nbg-code';
-    code.setAttribute('role', 'dialog'); code.setAttribute('aria-label', 'HTML of the slide');
+    code.setAttribute('role', 'dialog'); code.setAttribute('aria-label', 'Structure and HTML of the slide');
     code.innerHTML =
-      '<div class="nbg-row nbg-ch"><span class="nbg-ct">HTML</span>' +
-      '<button type="button" data-tab="tree" class="nbg-on" title="The slide’s elements — click selects one on the slide, Shift+click adds it, double-click edits its text, ▸ expands">Tree</button>' +
+      '<div class="nbg-row nbg-ch"><span class="nbg-ct">Slide</span>' +
+      '<button type="button" data-tab="outline" class="nbg-on" title="The slide’s shapes — cards, text blocks, images — nested by containment: tick the boxes to select several, click a name to select it alone, Shift+click adds, double-click edits its text">Outline</button>' +
+      '<button type="button" data-tab="tree" title="The slide’s HTML elements — click selects one on the slide, Shift+click adds it, double-click edits its text, ▸ expands">Tree</button>' +
       '<button type="button" data-tab="code" title="The selected element’s source — edit it and Apply (Ctrl/Cmd+Enter)">Code</button>' +
       '<span class="nbg-cfill"></span>' +
       '<button type="button" data-c="refresh" class="nbg-tquiet" title="Re-read the slide">↻</button>' +
       '<button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc)">✕</button></div>' +
-      '<div class="nbg-cb nbg-ctree" role="tree"></div>' +
+      '<div class="nbg-cb nbg-cout"><div class="nbg-of"><input type="search" class="nbg-oq" placeholder="Filter by text…" aria-label="Filter shapes">' +
+      '<button type="button" data-o="all" class="nbg-tquiet" title="Select every top-level shape of the slide (Ctrl/Cmd+A)">All</button>' +
+      '<button type="button" data-o="none" class="nbg-tquiet" title="Clear the selection">None</button><span class="nbg-oc"></span></div><div class="nbg-olist" role="tree"></div></div>' +
+      '<div class="nbg-cb nbg-ctree" hidden role="tree"></div>' +
       '<div class="nbg-cb nbg-craw" hidden><div class="nbg-cw"></div><textarea class="nbg-raw" spellcheck="false" wrap="off" aria-label="HTML source of the selected element"></textarea>' +
       '<div class="nbg-cf"><button type="button" data-c="apply" class="nbg-tdone" title="Apply the source to the element (Ctrl/Cmd+Enter) — recorded like every other edit">Apply</button>' +
       '<button type="button" data-c="revert" class="nbg-tquiet" title="Drop the unapplied changes">Revert</button>' +
       '<button type="button" data-c="copy" class="nbg-tquiet" title="Copy the source">Copy</button><span class="nbg-cs"></span></div></div>';
-    codeTree = code.querySelector('.nbg-ctree'); codeRaw = code.querySelector('.nbg-raw'); codeStatus = code.querySelector('.nbg-cs');
+    codeTree = code.querySelector('.nbg-ctree'); codeOut = code.querySelector('.nbg-olist'); codeRaw = code.querySelector('.nbg-raw'); codeStatus = code.querySelector('.nbg-cs');
+    code.querySelector('.nbg-oq').addEventListener('input', function (e) { outFilter = e.target.value; renderOutline(); });
     makeMovable(code, placeCode);
     code.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -1441,16 +1499,20 @@
         else if (c === 'copy') { try { navigator.clipboard.writeText(codeRaw.value); setRawStatus('Copied.'); } catch (x) { codeRaw.select(); document.execCommand('copy'); setRawStatus('Copied.'); } }
         return;
       }
+      if (b && b.hasAttribute('data-o')) { if (b.getAttribute('data-o') === 'all') selectAllIn(codeSlide()); else deselectShape(); return; }
       var row = e.target.closest('.nbg-tr'); if (!row) return;
       var el = elByKey(row.getAttribute('data-path')); if (!el) return;
+      var outline = row.classList.contains('nbg-or');
       if (e.target.classList.contains('nbg-tw') && !e.target.classList.contains('nbg-tw-none')) {   // twisty
         var key = row.getAttribute('data-path');
         if (row.querySelector('.nbg-tw').textContent === '▾') { codeOpen.delete(key); codeClosed.add(key); } else { codeClosed.delete(key); codeOpen.add(key); }
-        renderTree(); return;
+        if (outline) renderOutline(); else renderTree();
+        return;
       }
       if (el.classList.contains('slide')) return;
       codeEl = el;
-      if (e.shiftKey && shape) addToSelection(el); else selectSolo(el, true);
+      if (e.target.classList.contains('nbg-ock')) { toggleSelection(el); codeRefresh(); return; }            // checkbox: add / remove
+      if (e.shiftKey && shape) addToSelection(el); else if ((e.metaKey || e.ctrlKey) && shape) toggleSelection(el); else selectSolo(el, true);
       codeRefresh();
     });
     code.addEventListener('dblclick', function (e) {
@@ -1470,18 +1532,20 @@
       if (e.target === codeRaw) { if (mod && e.key === 'Enter') { e.preventDefault(); applyRaw(); } else if (e.key === 'Escape') { e.preventDefault(); if (rawDirty) revertRaw(); else closeCode(); } return; }
       if (e.key === 'Escape') { e.preventDefault(); closeCode(); return; }
       // tree keyboard: arrows move, Right / Left expand / collapse, Enter selects, Shift+Enter adds
-      var rows = Array.prototype.slice.call(codeTree.querySelectorAll('.nbg-tr')), cur = codeTree.querySelector('.nbg-cur') || codeTree.querySelector('.nbg-on') || rows[0];
+      var list = codeTab === 'outline' ? codeOut : codeTree;
+      var rows = Array.prototype.slice.call(list.querySelectorAll('.nbg-tr')), cur = list.querySelector('.nbg-cur') || list.querySelector('.nbg-on') || rows[0];
       if (!rows.length || !cur) return;
       var i = rows.indexOf(cur), key = cur.getAttribute('data-path'), el = elByKey(key);
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var nx = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]; rows.forEach(function (r) { r.classList.remove('nbg-cur'); }); nx.classList.add('nbg-cur'); nx.scrollIntoView({ block: 'nearest' }); hoverEl(elByKey(nx.getAttribute('data-path'))); }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); codeClosed.delete(key); codeOpen.add(key); renderTree(); markCur(key); }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); codeOpen.delete(key); codeClosed.add(key); renderTree(); markCur(key); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); codeClosed.delete(key); codeOpen.add(key); if (codeTab === 'outline') renderOutline(); else renderTree(); markCur(key); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); codeOpen.delete(key); codeClosed.add(key); if (codeTab === 'outline') renderOutline(); else renderTree(); markCur(key); }
+      else if (e.key === ' ' && codeTab === 'outline' && el && !el.classList.contains('slide')) { e.preventDefault(); codeEl = el; toggleSelection(el); codeRefresh(); markCur(key); }
       else if (e.key === 'Enter' && el && !el.classList.contains('slide')) { e.preventDefault(); codeEl = el; if (e.shiftKey && shape) addToSelection(el); else selectSolo(el, true); codeRefresh(); }
     });
-    codeTree.setAttribute('tabindex', '0');
+    codeTree.setAttribute('tabindex', '0'); codeOut.setAttribute('tabindex', '0');
     document.body.appendChild(code);
   }
-  function markCur(key) { var r = codeTree.querySelector('.nbg-tr[data-path="' + key + '"]'); if (r) r.classList.add('nbg-cur'); }
+  function markCur(key) { var r = (codeTab === 'outline' ? codeOut : codeTree).querySelector('.nbg-tr[data-path="' + key + '"]'); if (r) r.classList.add('nbg-cur'); }
   function openCode(el, tab) {
     if (!code) buildCode();
     if (el && el.nodeType === 1 && !el.closest(OURS)) codeEl = el;
@@ -1497,7 +1561,7 @@
     }
     codeObserver.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true, attributeFilter: ['class', 'style', 'hidden', 'data-nbg-group'] });
     if (!shape && !editing && codeEl && codeEl.isConnected && !codeEl.classList.contains('slide')) selectSolo(codeEl, true);
-    toast('HTML panel — Tree: click an element to select it on the slide (Shift+click adds, double-click edits its text); Code: edit the selected element’s source and Apply. Every change is recorded like the others.', 5000);
+    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements; Code: the selected element’s source, editable. The selection is highlighted on the slide and here.', 5000);
     return true;
   }
   function closeCode() {
@@ -1645,6 +1709,12 @@
     '.nbg-code .nbg-tr{white-space:nowrap;padding:1px 8px 1px 4px;cursor:default;color:' + INK + '}.nbg-code .nbg-tr:hover{background:' + CREAM + '}' +
     '.nbg-code .nbg-tr.nbg-on{background:' + ACCENT + ';color:#fff}.nbg-code .nbg-tr.nbg-on .nbg-tag,.nbg-code .nbg-tr.nbg-on .nbg-an,.nbg-code .nbg-tr.nbg-on .nbg-av,.nbg-code .nbg-tr.nbg-on .nbg-tx{color:#fff}' +
     '.nbg-code .nbg-tr.nbg-cur{box-shadow:inset 0 0 0 1.5px ' + CYAN + '}.nbg-code .nbg-tr-text{color:' + MUTED + ';font-style:italic}' +
+    '.nbg-code .nbg-of{display:flex;align-items:center;gap:4px;padding:4px 6px;border-bottom:1px solid rgba(0,56,65,.10);font:12px ' + FONT + '}.nbg-code .nbg-oq{flex:1;min-width:60px;height:24px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 6px}' +
+    '.nbg-code .nbg-oc{color:' + MUTED + ';white-space:nowrap;margin-left:2px}.nbg-code .nbg-olist{padding:4px 0;outline:none}' +
+    '.nbg-code .nbg-or{font:13px/1.6 ' + FONT + ';display:flex;align-items:center;gap:4px}.nbg-code .nbg-or .nbg-ol{overflow:hidden;text-overflow:ellipsis;min-width:0}' +
+    '.nbg-code .nbg-ock{margin:0 2px 0 0;accent-color:' + ACCENT + ';cursor:pointer}.nbg-code .nbg-ok{display:inline-block;width:14px;text-align:center;font-size:11px;color:' + MUTED + '}.nbg-code .nbg-ok-text{font-weight:700}' +
+    '.nbg-code .nbg-os{color:' + MUTED + ';font-size:11px;margin-left:auto;padding-left:6px;white-space:nowrap}.nbg-code .nbg-og{font-size:10px;padding:0 5px;border-radius:8px;background:rgba(0,173,191,.18);color:' + ACCENT + ';white-space:nowrap}.nbg-code .nbg-ob{background:rgba(91,107,109,.15);color:' + MUTED + '}' +
+    '.nbg-code .nbg-tr.nbg-on .nbg-os,.nbg-code .nbg-tr.nbg-on .nbg-ok{color:#fff}.nbg-code .nbg-tr.nbg-on .nbg-og{background:rgba(255,255,255,.25);color:#fff}' +
     '.nbg-code .nbg-tw{display:inline-block;width:14px;color:' + MUTED + ';cursor:pointer}.nbg-code .nbg-tw-none{cursor:default;opacity:.4}' +
     '.nbg-code .nbg-tag{color:#8b2d8b}.nbg-code .nbg-an{color:#9a4b00}.nbg-code .nbg-av{color:#0b5fa5}.nbg-code .nbg-tx{color:' + MUTED + '}.nbg-code .nbg-dot{color:' + CYAN + ';font-size:9px}' +
     '.nbg-code .nbg-craw{display:flex;flex-direction:column}.nbg-code .nbg-cw{padding:4px 8px;font:12px ' + FONT + ';color:' + MUTED + ';border-bottom:1px solid rgba(0,56,65,.10);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
@@ -1698,6 +1768,7 @@
         h += item('pick', (el === menuShape ? '● ' : '○ ') + describe(el), rel + (i === menuStack.length - 1 ? ' · outermost' : '') + ' — click selects it alone, Shift+click adds it', 'nbg-pick' + (el === menuShape ? ' nbg-pick-on' : ''));
       });
     }
+    h += item('outline', 'Show structure', 'The slide’s shapes as an outline — tick boxes to select several, click a name to select one; the selection is highlighted here. Tabs for the HTML tree and the editable source.', 'nbg-quiet');
     h += item('code', 'Show HTML', (menuShape || menuTarget ? describe(menuShape || menuTarget) + ' in a tree of the slide' : 'A tree of the slide') + ' — click an element there to select it here, and edit its source in the Code tab.', 'nbg-quiet');
     h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
     if (edits.length) {
@@ -1735,7 +1806,8 @@
       else if (action === 'save') { closeMenu(); saveEditedCopy(); }
       else if (action === 'discard') { closeMenu(); discardEdits(); }
       else if (action === 'discardslide') { var sl = menuSlide; closeMenu(); discardSlideEdits(sl); }
-      else if (action === 'code') { var ce = s || t || menuSlide; closeMenu(); openCode(ce); }
+      else if (action === 'code') { var ce = s || t || menuSlide; closeMenu(); openCode(ce, 'tree'); }
+      else if (action === 'outline') { var oe = s || t || menuSlide; closeMenu(); openCode(oe, 'outline'); }
       else closeMenu();
     });
     menu.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -1855,6 +1927,7 @@
         else if (mod2 && (e.code === 'BracketRight' || e.key === ']' || e.key === '}')) { e.preventDefault(); reorder(e.shiftKey ? 'front' : 'forward'); }
         else if (mod2 && (e.code === 'BracketLeft' || e.key === '[' || e.key === '{')) { e.preventDefault(); reorder(e.shiftKey ? 'back' : 'backward'); }
         else if (mod2 && e.shiftKey && (e.code === 'KeyH' || /^h$/i.test(e.key))) { e.preventDefault(); if (codeIsOpen()) closeCode(); else openCode(shape.el); }
+        else if (mod2 && e.shiftKey && (e.code === 'KeyO' || /^o$/i.test(e.key))) { e.preventDefault(); if (codeIsOpen() && codeTab === 'outline') closeCode(); else openCode(shape.el, 'outline'); }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(-step, 0, e.altKey); }
         else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(step, 0, e.altKey); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(0, -step, e.altKey); }
@@ -1897,7 +1970,8 @@
     },
     code: {
       open: openCode, close: closeCode, isOpen: codeIsOpen, show: function (el) { return openCode(el, 'code'); }, tab: setTab, refresh: codeRefresh,
-      target: function () { return codeEl; }, source: function () { return codeRaw ? codeRaw.value : ''; },
+      target: function () { return codeEl; }, source: function () { return codeRaw ? codeRaw.value : ''; }, filter: function (q) { outFilter = q || ''; var i = code && code.querySelector('.nbg-oq'); if (i) i.value = outFilter; renderOutline(); },
+      outlineRowOf: function (el) { return codeOut ? codeOut.querySelector('.nbg-tr[data-path="' + pathKey(el) + '"]') : null; },
       setSource: function (txt) { if (!code) return false; codeRaw.value = txt; rawDirty = true; rawFor = rawFor || codeEl; return true; },
       apply: applyRaw, revert: revertRaw, rowOf: function (el) { return codeTree ? codeTree.querySelector('.nbg-tr[data-path="' + pathKey(el) + '"]:not([data-text])') : null; },
     },

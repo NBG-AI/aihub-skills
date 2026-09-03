@@ -25,9 +25,10 @@ Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-men
   bring to front / send to back, align (left, centre, right, top, middle, bottom), distribute with
   equal gaps, and group / ungroup. Nested or overlapping shapes: the menu's *Select at this point*
   list, the toolbar's Stack list, Ctrl/Cmd+click cycling and Tab / Shift+Tab reach every level.
-- **Show HTML** — a panel with the slide's element tree synced both ways with the selection (click a
-  row to select that element, select on the slide to reveal its row) and the selected element's
-  editable source; Apply records the change like every other edit (scripts are stripped).
+- **Show structure / Show HTML** — a panel with an outline of the slide's shapes (checkboxes to
+  select several, All / None, filter), the element tree synced both ways with the selection, and
+  the selected element's editable source; Apply records the change like every other edit
+  (scripts are stripped).
 - Edits survive a reload and **Save edited copy** downloads the deck with the changes baked in;
   **Discard changes on this slide** restores one slide, **Discard edits** restores them all.
 - **Export to PDF** — choose *Save as PDF* in the browser's print dialog and get the same

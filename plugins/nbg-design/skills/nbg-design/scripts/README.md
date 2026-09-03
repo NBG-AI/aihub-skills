@@ -145,7 +145,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 - Inlines one `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">` before the
   last `</body>`: `lib/print-layout.js` (the print-layout shim shared with `export-pdf.mjs`)
   followed by `lib/deck-menu.js` (menu UI, editing, persistence, saved copy, print
-  orchestration). The deck stays fully self-contained (~120 KB more).
+  orchestration). The deck stays fully self-contained (~150 KB more).
 - Idempotent: re-running reports `already current`, refreshes a same-version block, or
   upgrades an older one (including the v1.4 `nbg-pdf-menu-script` block). `--remove` strips it.
 - The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Edit text* (when the
@@ -252,8 +252,15 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
     value }`, so it persists, lands in the saved copy and is removed by Discard); selecting any
     member selects the whole group (`expandGroups`), grouping a selection that contains groups
     merges them; Ctrl/Cmd+click or `solo()` picks one member.
-- **HTML panel** (`#nbg-code`, menu *Show HTML*, toolbar `</>`, Ctrl/Cmd+Shift+H; movable by its
-  grip, resizable, docked right by default). *Tree*: `renderTree()` renders the current slide
+- **Structure / HTML panel** (`#nbg-code`, menu *Show structure* / *Show HTML*, toolbar `</>`,
+  Ctrl/Cmd+Shift+O / H; movable by its grip, resizable, docked right by default). *Outline*
+  (default tab): `renderOutline()` walks `childShapes()` from the slide (shape candidates only,
+  backdrops included and badged), one `.nbg-or` row per shape with a checkbox (`toggleSelection`),
+  a kind icon (`shapeKind`: img / text / box), `shapeLabel()` (text preview, image alt, or
+  tag.class), size, a per-slide group badge (`groupBadges`), an edited dot; *All* =
+  `selectAllIn`, *None* = `deselectShape`, the filter keeps matching rows and their ancestors;
+  twisties share the tree's `codeClosed` set. `setSelection()` now drops any element whose
+  container is also selected (a move would apply twice). *Tree*: `renderTree()` renders the current slide
   (`codeSlide()`: the slide of the followed element, else the one at the viewport centre) as
   rows keyed by element path (`data-path`), expanded two levels plus the ancestors of the
   selection, twisties remembered per path; rows carry tag, id, classes (ours filtered), truncated
@@ -289,7 +296,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 - `window.nbgDeck = { version, pdf: { prepare, restore, exportPdf }, edit: { start, commit,
   cancel, isEditing, list, format, buildEditedHtml, save, discard, discardSlide(slide),
   listFor(slide), slideAt(x, y) }, code: { open(el), show(el), close, isOpen, tab, refresh,
-  target, source, setSource, apply, revert, rowOf(el) }, shape: { select, selectMany,
+  target, source, setSource, apply, revert, rowOf(el), outlineRowOf(el), filter(q) }, shape: { select, selectMany,
   add, remove, toggle, solo, selectAll, deselect, selected, selection, reset, align(kind, ref),
   distribute('h'|'v', ref), order('front'|'forward'|'backward'|'back'), group, ungroup, groupOf,
   shapesOf(slide), stackAt(x, y), enclosing(el), inside(el) }, resolveTextTarget,
