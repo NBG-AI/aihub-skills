@@ -7,9 +7,15 @@
  * Text editing
  *   - double-click a text element inside a slide (or right-click it → "Edit text") to edit it
  *     in place: the element becomes contenteditable (its inline markup and the slide's CSS are
- *     untouched; formatting commands are blocked, paste/drop insert plain text, and anything the
- *     browser wraps around typed text is unwrapped on commit); Enter or a click outside applies,
- *     Escape cancels, Shift+Enter inserts a line break; deck shortcuts are suppressed meanwhile.
+ *     untouched; paste/drop insert plain text; anything the browser wraps around typed text
+ *     other than the toolbar's b/i/u/s tags is unwrapped on commit); Enter or a click outside
+ *     applies, Escape cancels, Shift+Enter inserts a line break; deck shortcuts are suppressed;
+ *   - a formatting toolbar floats above the text while editing: Bold / Italic / Underline /
+ *     Strikethrough (a selected run gets semantic tags; with no selection the whole text block
+ *     toggles via inline style), A− / A+ and an exact px size (line-height kept proportional),
+ *     font family (the design system's stacks), text colour (the NBG palette), alignment, Clear.
+ *     Block-level formatting is inline style on the element and is recorded as a 'style' edit.
+ *     Shortcuts: Ctrl/Cmd+B/I/U, Ctrl/Cmd+Shift+> and < for size.
  *
  * Shape resizing / moving
  *   - right-click a card, photo panel, image, decorative block or text block → "Resize / move
@@ -36,7 +42,7 @@
  *   - Ctrl/Cmd+P and the browser's own Print command go through the same prepare / restore.
  *
  * window.nbgDeck = { version, pdf: { prepare, restore, exportPdf }, edit: { start, commit,
- * cancel, isEditing, list, buildEditedHtml, save, discard }, shape: { select, deselect,
+ * cancel, isEditing, list, format, buildEditedHtml, save, discard }, shape: { select, deselect,
  * selected, reset }, resolveTextTarget, resolveShapeTarget } is exposed; window.nbgPdf aliases
  * the pdf part. An external driver (export-pdf.mjs, tests) sets window.__nbgPdfExternal = true so
  * the native print hooks stay out of its way.
@@ -45,7 +51,7 @@
  */
 (function () {
   if (window.nbgDeck) return;
-  var VERSION = 3;
+  var VERSION = 4;
   var ACCENT = '#003841', CYAN = '#00ADBF', INK = '#0A1416', CREAM = '#F5F8F6', MUTED = '#5B6B6D';
   var FONT = "'Aptos', 'Inter', Helvetica, Arial, sans-serif";
 
@@ -71,7 +77,7 @@
   }
 
   /* ---------- target resolution ---------- */
-  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box';
+  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-text-tools';
   var INLINE = /^(span|a|b|i|em|strong|small|code|sup|sub|mark|u|abbr|time|label|s|q)$/i;
   function hasOwnText(el) {
     for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
@@ -169,35 +175,49 @@
     closeMenu();
     var sel = window.getSelection(), ranges = [];
     if (keepSelection && sel) for (var i = 0; i < sel.rangeCount; i++) ranges.push(sel.getRangeAt(i).cloneRange());
-    editing = { el: el, original: el.innerHTML };
+    editing = { el: el, original: el.innerHTML, preStyle: attrStyle(el) };
     // Rich contenteditable (plaintext-only would force white-space:pre-wrap and re-flow the text
-    // while editing). Formatting commands, rich paste and drops are blocked in `beforeinput`, and
-    // every element the browser inserts (other than <br>) is unwrapped on commit — the original
-    // descendants are tagged so they can be told apart.
+    // while editing). Only the toolbar's formatting commands are allowed in `beforeinput` (rich
+    // paste and drops insert plain text), and every element the browser inserts — other than
+    // <br> and the semantic b/i/u/s tags the toolbar produces — is unwrapped on commit; the
+    // original descendants are tagged so they can be told apart.
     el.querySelectorAll('*').forEach(function (c) { c.setAttribute('data-nbg-orig', ''); });
     el.setAttribute('contenteditable', 'true');
     el.setAttribute('spellcheck', 'true');
     el.classList.add('nbg-editing');
+    try { document.execCommand('styleWithCSS', false, false); } catch (x) { /* tags, not spans */ }
     el.focus({ preventScroll: true });
     if (sel) {
       sel.removeAllRanges();
       if (ranges.length) ranges.forEach(function (r) { sel.addRange(r); });
       else { var r = document.createRange(); r.selectNodeContents(el); r.collapse(false); sel.addRange(r); }
     }
-    toast('Editing — Enter applies, Esc cancels, Shift+Enter for a line break.', 2500);
+    showTools();
+    toast('Editing — Enter applies, Esc cancels, Shift+Enter for a line break. Use the toolbar (or Ctrl/Cmd+B/I/U, Ctrl/Cmd+Shift+> / <) to format.', 3000);
     return true;
+  }
+  var KEEP_TAGS = /^(BR|B|STRONG|I|EM|U|S|STRIKE)$/;
+  // Chrome expresses "un-bold inside a bold block" (and the italic/underline equivalents) as a
+  // styled span; keep such spans when their style holds nothing but those three properties.
+  var FORMAT_PROPS = /^(font-weight|font-style|text-decoration(-line|-style|-color|-thickness)?)$/;
+  function isFormatSpan(c) {
+    if (c.tagName !== 'SPAN' || c.attributes.length !== 1 || !c.hasAttribute('style')) return false;
+    for (var i = 0; i < c.style.length; i++) if (!FORMAT_PROPS.test(c.style[i])) return false;
+    return c.style.length > 0;
   }
   function endEdit() {
     var e = editing; editing = null;
+    hideTools();
     e.el.removeAttribute('contenteditable');
     e.el.removeAttribute('spellcheck');
     e.el.classList.remove('nbg-editing');
     if (e.el.getAttribute('class') === '') e.el.removeAttribute('class');
-    // keep the original inline markup, drop whatever the browser wrapped around typed text
+    // keep the original inline markup and the toolbar's b/i/u/s wrappers, drop whatever else the
+    // browser wrapped around typed text (styled spans, fonts, divs)
     var all = Array.prototype.slice.call(e.el.querySelectorAll('*')).reverse();   // deepest first
     all.forEach(function (c) {
       if (c.hasAttribute('data-nbg-orig')) { c.removeAttribute('data-nbg-orig'); return; }
-      if (c.tagName === 'BR') return;
+      if (KEEP_TAGS.test(c.tagName) || isFormatSpan(c)) { if (c.tagName !== 'BR' && !c.textContent) c.parentNode.removeChild(c); else if (c.tagName === 'STRIKE') { var s2 = document.createElement('s'); while (c.firstChild) s2.appendChild(c.firstChild); c.parentNode.replaceChild(s2, c); } return; }
       while (c.firstChild) c.parentNode.insertBefore(c.firstChild, c);
       c.parentNode.removeChild(c);
     });
@@ -206,19 +226,166 @@
   function commitEdit() {
     if (!editing) return false;
     var e = endEdit();
+    var changed = false;
     if (e.el.innerHTML !== e.original) {
       var ed = findEdit(e.el, 'html');
       recordEdit(e.el, 'html', ed ? ed.original : e.original, e.el.innerHTML);
-      toast('Text updated — ' + changesLabel() + '. Right-click → “Save edited copy” to download the deck with your changes.', 5000);
+      changed = true;
     }
+    if (attrStyle(e.el) !== e.preStyle) {
+      var sd = findEdit(e.el, 'style');
+      recordEdit(e.el, 'style', sd ? sd.original : e.preStyle, attrStyle(e.el));
+      changed = true;
+    }
+    if (changed) toast('Text updated — ' + changesLabel() + '. Right-click → “Save edited copy” to download the deck with your changes.', 5000);
     return true;
   }
   function cancelEdit() {
     if (!editing) return false;
     var e = endEdit();
     e.el.innerHTML = e.original;
+    apply(e.el, 'style', e.preStyle);
     return true;
   }
+
+  /* ---------- text formatting toolbar (shown while editing) ---------- */
+  var FONTS = [
+    ['', 'Default (Aptos)'], ["'Aptos', 'Inter', Helvetica, Arial, sans-serif", 'Aptos'], ["'Inter', Helvetica, Arial, sans-serif", 'Inter'],
+    ['Helvetica, Arial, sans-serif', 'Helvetica'], ['Arial, sans-serif', 'Arial'], ['Georgia, serif', 'Georgia'],
+    ["'Times New Roman', Times, serif", 'Times New Roman'], ["'Courier New', Courier, monospace", 'Courier New'],
+  ];
+  var COLORS = [['', 'Default'], ['#003841', 'Deep teal'], ['#007B85', 'Teal'], ['#00ADBF', 'Bright cyan'], ['#00CFE7', 'Electric cyan'], ['#0A1416', 'Black'], ['#5B6B6D', 'Grey'], ['#F5F8F6', 'Cream'], ['#FFFFFF', 'White']];
+  var tools = null, toolsSel = null;
+  function selectionInEditing() {
+    var sel = window.getSelection();
+    return !!(sel && sel.rangeCount && editing && editing.el.contains(sel.getRangeAt(0).commonAncestorContainer));
+  }
+  function saveSelection() {
+    var sel = window.getSelection();
+    toolsSel = (sel && sel.rangeCount && selectionInEditing()) ? sel.getRangeAt(0).cloneRange() : null;
+  }
+  function restoreSelection() {
+    if (!editing) return;
+    if (document.activeElement === editing.el) return;      // the live selection is authoritative
+    editing.el.focus({ preventScroll: true });
+    var sel = window.getSelection();
+    if (sel && toolsSel) { sel.removeAllRanges(); sel.addRange(toolsSel); }
+  }
+  function styleProp(el, prop) { return el.style.getPropertyValue(prop); }
+  function setTextStyle(prop, value) {
+    var el = editing.el;
+    if (value === '' || value === null) el.style.removeProperty(prop); else el.style.setProperty(prop, value);
+    if (el.getAttribute('style') === '') el.removeAttribute('style');
+  }
+  function fontSizePx(el) { return parseFloat(getComputedStyle(el).fontSize) || 16; }
+  function setFontSize(px) {
+    var el = editing.el, cs = getComputedStyle(el);
+    // keep the line-height proportional when the design fixed it in px
+    if (!styleProp(el, 'line-height') && cs.lineHeight !== 'normal') {
+      var ratio = (parseFloat(cs.lineHeight) || 0) / fontSizePx(el);
+      if (ratio > 0) setTextStyle('line-height', String(Math.round(ratio * 1000) / 1000));
+    }
+    setTextStyle('font-size', Math.max(8, Math.round(px)) + 'px');
+  }
+  function toggleBlock(prop, on, off) {
+    var el = editing.el, cur = styleProp(el, prop) || getComputedStyle(el)[prop.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); })];
+    setTextStyle(prop, (cur || '').indexOf(on) >= 0 ? off : on);
+  }
+  function format(action, value) {
+    if (!editing) return false;
+    restoreSelection();
+    var sel = window.getSelection(), ranged = sel && sel.rangeCount && !sel.isCollapsed && selectionInEditing();
+    var el = editing.el;
+    switch (action) {
+      case 'bold': if (ranged) document.execCommand('bold'); else toggleBlock('font-weight', '700', '400'); break;
+      case 'italic': if (ranged) document.execCommand('italic'); else toggleBlock('font-style', 'italic', 'normal'); break;
+      case 'underline': if (ranged) document.execCommand('underline'); else toggleDecoration('underline'); break;
+      case 'strike': if (ranged) document.execCommand('strikeThrough'); else toggleDecoration('line-through'); break;
+      case 'bigger': setFontSize(fontSizePx(el) * 1.1); break;
+      case 'smaller': setFontSize(fontSizePx(el) / 1.1); break;
+      case 'size': if (value) setFontSize(parseFloat(value)); break;
+      case 'family': setTextStyle('font-family', value || ''); break;
+      case 'color': setTextStyle('color', value || ''); break;
+      case 'align': setTextStyle('text-align', value || ''); break;
+      case 'clear': {
+        // back to the design: the selection loses its b/i/u/s tags, the block returns to the inline
+        // style it had before any formatting was applied (this session's or an earlier saved one)
+        if (ranged) document.execCommand('removeFormat');
+        var rec = findEdit(el, 'style');
+        apply(el, 'style', rec ? rec.original : editing.preStyle);
+        break;
+      }
+      default: return false;
+    }
+    layoutTools(); saveSelection();
+    return true;
+  }
+  function toggleDecoration(kind) {
+    var el = editing.el, cur = (styleProp(el, 'text-decoration') || getComputedStyle(el).textDecorationLine || '').split(/\s+/).filter(function (x) { return x && x !== 'none'; });
+    var i = cur.indexOf(kind);
+    if (i >= 0) cur.splice(i, 1); else cur.push(kind);
+    setTextStyle('text-decoration', cur.length ? cur.join(' ') : 'none');
+  }
+  function buildTools() {
+    tools = document.createElement('div');
+    tools.id = 'nbg-text-tools';
+    tools.setAttribute('role', 'toolbar');
+    var h = '';
+    h += '<button type="button" data-f="bold" title="Bold (Ctrl/Cmd+B) — selection, or the whole text when nothing is selected"><b>B</b></button>';
+    h += '<button type="button" data-f="italic" title="Italic (Ctrl/Cmd+I)"><i>I</i></button>';
+    h += '<button type="button" data-f="underline" title="Underline (Ctrl/Cmd+U)"><u>U</u></button>';
+    h += '<button type="button" data-f="strike" title="Strikethrough"><s>S</s></button>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<button type="button" data-f="smaller" title="Smaller (Ctrl/Cmd+Shift+&lt;)">A−</button>';
+    h += '<input type="number" data-f="size" min="8" max="400" step="1" title="Font size in px" aria-label="Font size">';
+    h += '<button type="button" data-f="bigger" title="Larger (Ctrl/Cmd+Shift+&gt;)">A+</button>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<select data-f="family" title="Font family" aria-label="Font family">' + FONTS.map(function (f) { return '<option value="' + f[0].replace(/"/g, '&quot;') + '">' + f[1] + '</option>'; }).join('') + '</select>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<span class="nbg-swatches" title="Text colour (NBG palette)">' + COLORS.map(function (c) { return '<button type="button" data-f="color" data-v="' + c[0] + '" title="' + c[1] + '" style="' + (c[0] ? 'background:' + c[0] : 'background:linear-gradient(135deg,#fff 45%,#0A1416 55%)') + '"></button>'; }).join('') + '</span>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<button type="button" data-f="align" data-v="left" title="Align left">⇤</button><button type="button" data-f="align" data-v="center" title="Centre">☰</button><button type="button" data-f="align" data-v="right" title="Align right">⇥</button>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<button type="button" data-f="clear" class="nbg-tquiet" title="Clear formatting (this text)">Clear</button>';
+    h += '<button type="button" data-f="done" class="nbg-tdone" title="Apply (Enter)">Done</button>';
+    tools.innerHTML = h;
+    // keep the editable focused and its selection intact while using the buttons
+    tools.addEventListener('pointerdown', function (e) { if (!e.target.closest('input, select')) e.preventDefault(); saveSelection(); });
+    tools.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      e.preventDefault();
+      var f = b.getAttribute('data-f');
+      if (f === 'done') { commitEdit(); return; }
+      format(f, b.getAttribute('data-v'));
+    });
+    tools.querySelector('[data-f=size]').addEventListener('change', function (e) { format('size', e.target.value); restoreSelection(); });
+    tools.querySelector('[data-f=size]').addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); format('size', e.target.value); restoreSelection(); } if (e.key === 'Escape') { e.preventDefault(); restoreSelection(); } });
+    tools.querySelector('[data-f=family]').addEventListener('change', function (e) { format('family', e.target.value); restoreSelection(); });
+    tools.querySelector('[data-f=family]').addEventListener('keydown', function (e) { e.stopPropagation(); });
+    document.body.appendChild(tools);
+  }
+  function showTools() { if (!tools) buildTools(); tools.hidden = false; layoutTools(); }
+  function hideTools() { if (tools) tools.hidden = true; toolsSel = null; }
+  function layoutTools() {
+    if (!tools || tools.hidden || !editing) return;
+    var el = editing.el, r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    tools.style.left = '0px'; tools.style.top = '0px';
+    var tr = tools.getBoundingClientRect();
+    var left = Math.max(8, Math.min(r.left, window.innerWidth - tr.width - 8));
+    var top = r.top - tr.height - 12;
+    if (top < 8) top = Math.min(r.bottom + 12, window.innerHeight - tr.height - 8);
+    tools.style.left = left + 'px'; tools.style.top = top + 'px';
+    tools.querySelector('[data-f=size]').value = Math.round(fontSizePx(el));
+    var fam = styleProp(el, 'font-family'), famSel = tools.querySelector('[data-f=family]');
+    famSel.value = fam; if (famSel.value !== fam) famSel.value = '';
+    tools.querySelector('[data-f=bold]').classList.toggle('nbg-on', parseInt(cs.fontWeight, 10) >= 600);
+    tools.querySelector('[data-f=italic]').classList.toggle('nbg-on', cs.fontStyle === 'italic');
+    tools.querySelector('[data-f=underline]').classList.toggle('nbg-on', /underline/.test(cs.textDecorationLine));
+    tools.querySelector('[data-f=strike]').classList.toggle('nbg-on', /line-through/.test(cs.textDecorationLine));
+    Array.prototype.forEach.call(tools.querySelectorAll('[data-f=align]'), function (b) { b.classList.toggle('nbg-on', styleProp(el, 'text-align') === b.getAttribute('data-v')); });
+    Array.prototype.forEach.call(tools.querySelectorAll('[data-f=color]'), function (b) { b.classList.toggle('nbg-on', (styleProp(el, 'color') || '').toLowerCase() === b.getAttribute('data-v').toLowerCase()); });
+  }
+  document.addEventListener('selectionchange', function () { if (editing && tools && !tools.hidden) layoutTools(); });
 
   /* ---------- shapes: resize / move ---------- */
   var shape = null;        // { el }
@@ -473,7 +640,18 @@
     '#nbg-shape-box .nbg-chip{position:absolute;left:0;top:-30px;white-space:nowrap;padding:3px 8px;border-radius:6px;background:' + INK + ';color:#fff;' +
     'font:12px/1.4 ' + FONT + ';pointer-events:none}' +
     '#nbg-shape-box .nbg-chip.nbg-chip-below{top:auto;bottom:-30px}' +
-    '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
+    '#nbg-text-tools{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:2px;padding:4px 6px;background:#fff;color:' + INK + ';' +
+    'border:1px solid rgba(0,56,65,.14);border-radius:10px;box-shadow:0 10px 28px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:13px/1 ' + FONT + ';user-select:none;-webkit-user-select:none}' +
+    '#nbg-text-tools button{border:0;background:transparent;color:inherit;font:inherit;min-width:28px;height:28px;padding:0 6px;border-radius:6px;cursor:pointer;line-height:28px}' +
+    '#nbg-text-tools button:hover{background:' + CREAM + '}#nbg-text-tools button.nbg-on{background:' + ACCENT + ';color:#fff}' +
+    '#nbg-text-tools button.nbg-tquiet{color:' + MUTED + '}#nbg-text-tools button.nbg-tdone{background:' + CYAN + ';color:' + INK + ';font-weight:600;margin-left:4px}' +
+    '#nbg-text-tools input[type=number]{width:52px;height:26px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 4px;text-align:center;color:inherit;background:#fff}' +
+    '#nbg-text-tools select{height:26px;max-width:150px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 4px;color:inherit;background:#fff}' +
+    '#nbg-text-tools .nbg-tsep{width:1px;height:20px;margin:0 4px;background:rgba(0,56,65,.14)}' +
+    '#nbg-text-tools .nbg-swatches{display:inline-flex;gap:3px;align-items:center}' +
+    '#nbg-text-tools .nbg-swatches button{min-width:16px;width:16px;height:16px;padding:0;border-radius:50%;border:1px solid rgba(0,56,65,.3)}' +
+    '#nbg-text-tools .nbg-swatches button.nbg-on{box-shadow:0 0 0 2px #fff,0 0 0 4px ' + CYAN + '}' +
+    '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-text-tools{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
   document.head.appendChild(style);
 
   var menu = null, menuTarget = null, menuShape = null;
@@ -485,7 +663,7 @@
     if (menuTarget) h += item('edit', 'Edit text', 'Edit this text in place — Enter applies, Esc cancels. Or double-click any text.');
     if (menuShape) {
       h += item('shape', 'Resize / move shape', describe(menuShape) + ' — handles resize (Shift keeps proportions), drag moves, arrows nudge, Esc finishes.');
-      if (findEdit(menuShape, 'style')) h += item('reset', 'Reset shape', 'Restore this element’s original size and position.', 'nbg-quiet');
+      if (findEdit(menuShape, 'style')) h += item('reset', 'Reset shape', 'Restore this element’s original size, position and text formatting.', 'nbg-quiet');
     }
     h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
     if (edits.length) {
@@ -557,13 +735,16 @@
     e.preventDefault();
     startEdit(el, true);
   });
+  function inTools(t) { return !!(tools && t && tools.contains(t)); }
   document.addEventListener('pointerdown', function (e) {
     if (menu && !menu.hidden && !menu.contains(e.target)) closeMenu();
-    if (editing && !editing.el.contains(e.target) && !(menu && menu.contains(e.target))) commitEdit();
+    if (editing && !editing.el.contains(e.target) && !inTools(e.target) && !(menu && menu.contains(e.target))) commitEdit();
     if (shape && !(box && box.contains(e.target)) && !(menu && menu.contains(e.target))) deselectShape();
   }, true);
   document.addEventListener('focusout', function (e) {
-    if (editing && e.target === editing.el) setTimeout(function () { if (editing && document.activeElement !== editing.el) commitEdit(); }, 0);
+    if (editing && e.target === editing.el && !inTools(e.relatedTarget)) {
+      setTimeout(function () { if (editing && document.activeElement !== editing.el && !inTools(document.activeElement)) commitEdit(); }, 0);
+    }
   }, true);
   document.addEventListener('beforeinput', function (e) {
     if (!editing || !editing.el.contains(e.target)) return;
@@ -575,16 +756,26 @@
       if (txt) document.execCommand('insertText', false, txt.replace(/\r?\n/g, ' '));
       return;
     }
+    if (/^format(Bold|Italic|Underline|StrikeThrough|RemoveFormat)$/.test(t)) return;           // the toolbar's commands
     if (/^format/.test(t) || /^insert(OrderedList|UnorderedList|HorizontalRule|Link|FromYank)$/.test(t)) e.preventDefault();
   }, true);
   ['keydown', 'keyup', 'keypress'].forEach(function (type) {
     document.addEventListener(type, function (e) {
       if (editing) {
+        if (inTools(e.target)) return;                                                          // the size input / family select handle their own keys
         // keep the deck's shortcuts (arrows, space, Home/End…) from firing while typing
         e.stopPropagation();
         if (type !== 'keydown') return;
+        var mod = e.ctrlKey || e.metaKey;
         if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
         else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(); }
+        else if (mod && e.shiftKey && (e.key === '>' || e.key === '.')) { e.preventDefault(); saveSelection(); format('bigger'); }
+        else if (mod && e.shiftKey && (e.key === '<' || e.key === ',')) { e.preventDefault(); saveSelection(); format('smaller'); }
+        else if (mod && !e.shiftKey && /^[biu]$/i.test(e.key)) {
+          // Ctrl/Cmd+B/I/U: the browser formats a selection itself; with a collapsed caret apply to the whole text
+          var sel = window.getSelection();
+          if (sel && sel.isCollapsed) { e.preventDefault(); saveSelection(); format({ b: 'bold', i: 'italic', u: 'underline' }[e.key.toLowerCase()]); }
+        }
         return;
       }
       if (shape && !(menu && !menu.hidden)) {
@@ -624,7 +815,7 @@
     edit: {
       start: function (el) { return startEdit(el, false); }, commit: commitEdit, cancel: cancelEdit,
       isEditing: function () { return !!editing; }, list: function () { return edits.slice(); },
-      buildEditedHtml: buildEditedHtml, save: saveEditedCopy, discard: discardEdits,
+      format: format, buildEditedHtml: buildEditedHtml, save: saveEditedCopy, discard: discardEdits,
     },
     shape: { select: selectShape, deselect: deselectShape, selected: function () { return shape ? shape.el : null; }, reset: resetShape },
     resolveTextTarget: resolveTextTarget, resolveShapeTarget: resolveShapeTarget,

@@ -1,6 +1,6 @@
 # nbg-design
 
-Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing, shape resize/move, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 
 ## Overview
 
@@ -13,7 +13,8 @@ embedded images preserved; needs Chrome/Chromium/Edge on the host), and `pptx` (
 Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-menu.mjs`):
 
 - **Edit text** — double-click any text on a slide (or right-click it → *Edit text*) and edit it in
-  place; Enter applies, Esc cancels.
+  place; Enter applies, Esc cancels. A toolbar offers bold / italic / underline / strikethrough,
+  larger / smaller / exact font size, font family, NBG palette colours, alignment and Clear.
 - **Resize / move shape** — right-click a card, photo panel, image or text block: a selection frame
   with handles appears; drag to resize (Shift keeps proportions) or move, arrows nudge, Esc finishes.
   *Reset shape* restores one element.

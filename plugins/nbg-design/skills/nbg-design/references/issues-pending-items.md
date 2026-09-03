@@ -41,6 +41,13 @@
 
 ## Completed Items
 
+### 2026-09-03 — Added a text formatting toolbar to in-place editing (skill v1.7.0)
+- Detected: User asked for font/text options during in-place editing: bold, italic, underline, strikethrough, enlarge, reduce, set font size, font family, etc.
+- Affected files: `scripts/lib/deck-menu.js` (v4: `#nbg-text-tools` toolbar, `format()` API, selection-aware b/i/u/s, block-level size/family/colour/alignment, Clear, shortcuts; commit clean-up keeps b/strong/i/em/u/s and pure formatting spans; `style` edit recorded next to the `html` edit; Esc restores both), `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `scripts/README.md`, plugin README, references, manifests (1.6.0 → 1.7.0).
+- Solution: Selection-level styles use `execCommand` with `styleWithCSS` off (semantic tags); with a collapsed caret the whole block toggles via inline style. Size, family, colour and alignment are block-level inline style; fonts are limited to the design system's stacks and colours to the NBG palette. A first size change sets a unitless line-height equal to the current ratio when the design fixed it in px.
+- Defects found and fixed during verification: (1) *Clear* stripped the design's own inline `font-size` — it now returns to the inline style the block had before any formatting; (2) the selection saved on toolbar `pointerdown` overrode the live selection even when the editable still had focus — the live selection is now authoritative; (3) un-bolding a run inside a CSS-bold title yields a `font-weight: normal` span in Chrome, which the clean-up unwrapped — spans whose style holds only weight/style/decoration are now kept.
+- Verification: `test_scripts/deck-menu-roundtrip.mjs` (development workspace) on the three real decks — all checks pass; saved copies carry the formatting and pass `verify-deck.mjs --strict` and `export-pdf.mjs`.
+
 ### 2026-09-03 — Added in-place shape resizing / moving to the in-deck menu (skill v1.6.0)
 - Detected: User asked for in-place resizing of the shapes directly in the produced HTML presentation.
 - Affected files: `scripts/lib/deck-menu.js` (v3: shape selection frame, drags, keyboard, reset; edit records generalised to `{ path, kind, original, value }`), `scripts/verify-deck.mjs` (warns when the block is older than the skill's version), `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `scripts/README.md`, plugin README, references, manifests (1.5.0 → 1.6.0).

@@ -145,7 +145,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 - Inlines one `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">` before the
   last `</body>`: `lib/print-layout.js` (the print-layout shim shared with `export-pdf.mjs`)
   followed by `lib/deck-menu.js` (menu UI, editing, persistence, saved copy, print
-  orchestration). The deck stays fully self-contained (~44 KB more).
+  orchestration). The deck stays fully self-contained (~58 KB more).
 - Idempotent: re-running reports `already current`, refreshes a same-version block, or
   upgrades an older one (including the v1.4 `nbg-pdf-menu-script` block). `--remove` strips it.
 - The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Edit text* (when the
@@ -156,12 +156,24 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   browser's native menu.
 - **Edit text** / **double-click**: the whole text block (accent spans inside a title stay
   intact) becomes `contenteditable` with a teal outline; Enter or a click outside applies, Esc
-  cancels, Shift+Enter inserts a line break, Ctrl/Cmd+Z undoes. Formatting shortcuts are blocked
-  through `beforeinput`, paste/drop insert plain text, and every element the browser wraps
-  around typed text (other than `<br>`) is unwrapped on commit — original descendants are
-  tagged during the edit so they can be told apart. The slide's CSS is never touched, and the
-  element's `white-space` and box do not change while editing (rich mode, not `plaintext-only`,
-  which would force `pre-wrap` and re-flow the text).
+  cancels, Shift+Enter inserts a line break, Ctrl/Cmd+Z undoes. Paste/drop insert plain text
+  (`beforeinput`), and every element the browser wraps around typed text — other than `<br>`
+  and the toolbar's `b/strong/i/em/u/s` tags — is unwrapped on commit; original descendants
+  are tagged during the edit so they can be told apart. The slide's CSS is never touched, and
+  the element's `white-space` and box do not change while editing (rich mode, not
+  `plaintext-only`, which would force `pre-wrap` and re-flow the text).
+- **Formatting toolbar** (`#nbg-text-tools`, floats above the text while editing): B / I / U / S
+  act on the selected run through `execCommand` with `styleWithCSS` off (semantic tags, no
+  styled spans) or, with a collapsed caret, toggle the whole block via inline `font-weight` /
+  `font-style` / `text-decoration`; A− / A+ scale the block's font-size by 10 % and the size
+  field sets an exact px value (the block gets a unitless `line-height` equal to its current
+  ratio the first time, so a px-fixed line-height does not collapse); font family from the
+  design system's stacks; text colour from the NBG palette; alignment; Clear (`removeFormat` on
+  the selection plus removal of the block's text properties); Done. `pointerdown` on the toolbar
+  is default-prevented so the editable keeps focus and its selection; the size field and family
+  select save/restore the selection around their own focus. Shortcuts: Ctrl/Cmd+B/I/U
+  (collapsed caret → whole block), Ctrl/Cmd+Shift+> / <. Block formatting changes the element's
+  `style` attribute and is recorded as a `style` edit alongside the `html` edit; Esc restores both.
 - **Resize / move shape**: offered for the card, photo panel, image, decorative block or text
   block under the pointer (an element is a "shape" when it is positioned, has a background,
   border or shadow, or is an image; otherwise the text block is used). A fixed-position
@@ -188,7 +200,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   the viewport-fit scaling — when the dialog closes. Ctrl/Cmd+P and the browser's Print command
   use the same `beforeprint`/`afterprint` hooks, so any print of the deck is faithful.
 - `window.nbgDeck = { version, pdf: { prepare, restore, exportPdf }, edit: { start, commit,
-  cancel, isEditing, list, buildEditedHtml, save, discard }, shape: { select, deselect,
+  cancel, isEditing, list, format, buildEditedHtml, save, discard }, shape: { select, deselect,
   selected, reset }, resolveTextTarget, resolveShapeTarget }` is exposed (`window.nbgPdf`
   aliases the pdf part); an external driver sets `window.__nbgPdfExternal = true` to keep the
   print hooks idle (`export-pdf.mjs` does).
