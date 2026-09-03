@@ -41,6 +41,13 @@
 
 ## Completed Items
 
+### 2026-09-03 — Selection-level formatting, movable toolbars, shape toolbar (skill v1.8.0)
+- Detected: User reported two defects in v1.7.0 — formatting applied to the whole block even with a selection, and Done did not hide the toolbar — and asked for movable toolbars and a formatting toolbar for shapes.
+- Cause (Done): `#nbg-text-tools{display:flex}` beat the `hidden` attribute's user-agent `display:none`, so the toolbar stayed visible after `hidden = true`; the test had only checked the attribute. Cause (selection): size, family and colour were block-level by design in v1.7.0.
+- Solution: `.nbg-panel[hidden]{display:none!important}`; `wrapSelection()` wraps exactly the selected text runs in styled spans for size/family/colour (kept-span rule extended), Clear on a selection removes only its tags and spans; `makeMovable()` grip on both panels with a remembered position; new `#nbg-shape-tools` with X/Y/W/H, fill, border, radius, opacity, shadow, Reset, Done, sharing the element's `style` record.
+- Affected files: `scripts/lib/deck-menu.js` (v5), `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `scripts/README.md`, plugin README, references, manifests (1.7.0 → 1.8.0).
+- Verification: `test_scripts/deck-menu-roundtrip.mjs` on the three real decks — selection-only colour/size/clear, real-mouse Done click (computed display none), real grip drags on both panels, shape toolbar fields and cosmetics round-trip; saved copies pass the strict gate and the exporter.
+
 ### 2026-09-03 — Added a text formatting toolbar to in-place editing (skill v1.7.0)
 - Detected: User asked for font/text options during in-place editing: bold, italic, underline, strikethrough, enlarge, reduce, set font size, font family, etc.
 - Affected files: `scripts/lib/deck-menu.js` (v4: `#nbg-text-tools` toolbar, `format()` API, selection-aware b/i/u/s, block-level size/family/colour/alignment, Clear, shortcuts; commit clean-up keeps b/strong/i/em/u/s and pure formatting spans; `style` edit recorded next to the `html` edit; Esc restores both), `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `scripts/README.md`, plugin README, references, manifests (1.6.0 → 1.7.0).

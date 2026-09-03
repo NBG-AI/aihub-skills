@@ -10,12 +10,14 @@
  *     untouched; paste/drop insert plain text; anything the browser wraps around typed text
  *     other than the toolbar's b/i/u/s tags is unwrapped on commit); Enter or a click outside
  *     applies, Escape cancels, Shift+Enter inserts a line break; deck shortcuts are suppressed;
- *   - a formatting toolbar floats above the text while editing: Bold / Italic / Underline /
- *     Strikethrough (a selected run gets semantic tags; with no selection the whole text block
- *     toggles via inline style), A− / A+ and an exact px size (line-height kept proportional),
- *     font family (the design system's stacks), text colour (the NBG palette), alignment, Clear.
- *     Block-level formatting is inline style on the element and is recorded as a 'style' edit.
- *     Shortcuts: Ctrl/Cmd+B/I/U, Ctrl/Cmd+Shift+> and < for size.
+ *   - a formatting toolbar floats above the text while editing (draggable by its grip; double-click
+ *     the grip to re-dock). Every control applies to the selected text when there is a selection
+ *     and to the whole block otherwise: Bold / Italic / Underline / Strikethrough (semantic tags on
+ *     a run), A− / A+ and an exact px size, font family (the design system's stacks), text colour
+ *     (the NBG palette) — on a run these wrap exactly the selected text in a styled span, on the
+ *     block they are inline style (line-height kept proportional) — alignment (block), Clear, Done.
+ *     Block-level formatting is recorded as a 'style' edit. Shortcuts: Ctrl/Cmd+B/I/U,
+ *     Ctrl/Cmd+Shift+> and < for size.
  *
  * Shape resizing / moving
  *   - right-click a card, photo panel, image, decorative block or text block → "Resize / move
@@ -25,7 +27,9 @@
  *     Alt+arrows resize, Tab selects the enclosing shape, Esc / Enter / click outside finishes.
  *     Only the element's inline geometry (left/top/width/height, position for flow elements)
  *     changes; pointer deltas are divided by the slide's current scale so the artboard
- *     coordinates stay exact at any viewport size. "Reset shape" restores one element.
+ *     coordinates stay exact at any viewport size. "Reset shape" restores one element;
+ *   - a shape toolbar (draggable) appears with the frame: X / Y / W / H fields, fill, border,
+ *     corner radius, opacity, shadow (NBG palette), Reset, Done — all inline style on the element.
  *
  * Persistence and hand-back
  *   - every change is recorded as { path, kind: 'html' | 'style', original, value } and kept in
@@ -47,11 +51,12 @@
  * the pdf part. An external driver (export-pdf.mjs, tests) sets window.__nbgPdfExternal = true so
  * the native print hooks stay out of its way.
  *
- * The menu, toast and selection frame live outside the slides, so the print layout hides them.
+ * The menu, toast, selection frame and toolbars live outside the slides, so the print layout
+ * hides them.
  */
 (function () {
   if (window.nbgDeck) return;
-  var VERSION = 4;
+  var VERSION = 5;
   var ACCENT = '#003841', CYAN = '#00ADBF', INK = '#0A1416', CREAM = '#F5F8F6', MUTED = '#5B6B6D';
   var FONT = "'Aptos', 'Inter', Helvetica, Arial, sans-serif";
 
@@ -77,7 +82,7 @@
   }
 
   /* ---------- target resolution ---------- */
-  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-text-tools';
+  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-text-tools, #nbg-shape-tools';
   var INLINE = /^(span|a|b|i|em|strong|small|code|sup|sub|mark|u|abbr|time|label|s|q)$/i;
   function hasOwnText(el) {
     for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
@@ -199,7 +204,7 @@
   var KEEP_TAGS = /^(BR|B|STRONG|I|EM|U|S|STRIKE)$/;
   // Chrome expresses "un-bold inside a bold block" (and the italic/underline equivalents) as a
   // styled span; keep such spans when their style holds nothing but those three properties.
-  var FORMAT_PROPS = /^(font-weight|font-style|text-decoration(-line|-style|-color|-thickness)?)$/;
+  var FORMAT_PROPS = /^(font-weight|font-style|font-size|font-family|color|line-height|text-decoration(-line|-style|-color|-thickness)?)$/;
   function isFormatSpan(c) {
     if (c.tagName !== 'SPAN' || c.attributes.length !== 1 || !c.hasAttribute('style')) return false;
     for (var i = 0; i < c.style.length; i++) if (!FORMAT_PROPS.test(c.style[i])) return false;
@@ -248,6 +253,53 @@
     return true;
   }
 
+  /* ---------- floating panels (movable toolbars) ---------- */
+  var panelPos = {};   // panel id -> { left, top } once the viewer dragged it; cleared by double-clicking the grip
+  function makeMovable(panel, relayout) {
+    var grip = document.createElement('span');
+    grip.className = 'nbg-grip'; grip.textContent = '⋮⋮';
+    grip.title = 'Drag to move this toolbar — double-click to let it follow the selection again';
+    panel.insertBefore(grip, panel.firstChild);
+    var pd = null;
+    grip.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var r = panel.getBoundingClientRect();
+      pd = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
+      try { grip.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+    });
+    grip.addEventListener('pointermove', function (e) {
+      if (!pd || e.pointerId !== pd.id) return;
+      var r = panel.getBoundingClientRect();
+      var left = Math.max(0, Math.min(e.clientX - pd.dx, window.innerWidth - r.width));
+      var top = Math.max(0, Math.min(e.clientY - pd.dy, window.innerHeight - r.height));
+      panelPos[panel.id] = { left: left, top: top };
+      panel.style.left = left + 'px'; panel.style.top = top + 'px';
+    });
+    grip.addEventListener('pointerup', function (e) { if (pd && e.pointerId === pd.id) pd = null; });
+    grip.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); delete panelPos[panel.id]; relayout(); });
+    grip.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); });
+  }
+  function placePanel(panel, anchor) {
+    panel.style.left = '0px'; panel.style.top = '0px';
+    var tr = panel.getBoundingClientRect(), pos = panelPos[panel.id], left, top;
+    if (pos) {
+      left = Math.max(0, Math.min(pos.left, window.innerWidth - tr.width));
+      top = Math.max(0, Math.min(pos.top, window.innerHeight - tr.height));
+    } else {
+      left = Math.max(8, Math.min(anchor.left, window.innerWidth - tr.width - 8));
+      top = anchor.top - tr.height - 12;
+      if (top < 8) top = Math.min(anchor.bottom + 12, window.innerHeight - tr.height - 8);
+    }
+    panel.style.left = left + 'px'; panel.style.top = top + 'px';
+  }
+  function swatches(attr, list) {
+    return '<span class="nbg-swatches">' + list.map(function (c) {
+      var bg = c[0] === '' ? 'linear-gradient(135deg,#fff 45%,#0A1416 55%)' : c[0] === 'transparent' ? 'repeating-linear-gradient(45deg,#ddd 0 4px,#fff 4px 8px)' : c[0];
+      return '<button type="button" data-' + attr + '="' + c[0] + '" title="' + c[1] + '" style="background:' + bg + '"></button>';
+    }).join('') + '</span>';
+  }
+  function normColor(v) { if (!v) return ''; var d = document.createElement('i'); d.style.color = v; return d.style.color || v; }
+
   /* ---------- text formatting toolbar (shown while editing) ---------- */
   var FONTS = [
     ['', 'Default (Aptos)'], ["'Aptos', 'Inter', Helvetica, Arial, sans-serif", 'Aptos'], ["'Inter', Helvetica, Arial, sans-serif", 'Inter'],
@@ -260,10 +312,8 @@
     var sel = window.getSelection();
     return !!(sel && sel.rangeCount && editing && editing.el.contains(sel.getRangeAt(0).commonAncestorContainer));
   }
-  function saveSelection() {
-    var sel = window.getSelection();
-    toolsSel = (sel && sel.rangeCount && selectionInEditing()) ? sel.getRangeAt(0).cloneRange() : null;
-  }
+  function currentRange() { var sel = window.getSelection(); return (sel && sel.rangeCount && selectionInEditing()) ? sel.getRangeAt(0) : null; }
+  function saveSelection() { var r = currentRange(); toolsSel = r ? r.cloneRange() : null; }
   function restoreSelection() {
     if (!editing) return;
     if (document.activeElement === editing.el) return;      // the live selection is authoritative
@@ -278,7 +328,7 @@
     if (el.getAttribute('style') === '') el.removeAttribute('style');
   }
   function fontSizePx(el) { return parseFloat(getComputedStyle(el).fontSize) || 16; }
-  function setFontSize(px) {
+  function setBlockFontSize(px) {
     var el = editing.el, cs = getComputedStyle(el);
     // keep the line-height proportional when the design fixed it in px
     if (!styleProp(el, 'line-height') && cs.lineHeight !== 'normal') {
@@ -291,28 +341,82 @@
     var el = editing.el, cur = styleProp(el, prop) || getComputedStyle(el)[prop.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); })];
     setTextStyle(prop, (cur || '').indexOf(on) >= 0 ? off : on);
   }
+  function toggleDecoration(kind) {
+    var el = editing.el, cur = (styleProp(el, 'text-decoration') || getComputedStyle(el).textDecorationLine || '').split(/\s+/).filter(function (x) { return x && x !== 'none'; });
+    var i = cur.indexOf(kind);
+    if (i >= 0) cur.splice(i, 1); else cur.push(kind);
+    setTextStyle('text-decoration', cur.length ? cur.join(' ') : 'none');
+  }
+  // Selection-level styling: wrap exactly the selected text runs in styled spans (reusing a span
+  // that already wraps just that run), so the rest of the block is untouched.
+  function wrapSelection(styler) {
+    var range = currentRange(); if (!range || range.collapsed) return false;
+    var root = range.commonAncestorContainer; if (root.nodeType === 3) root = root.parentNode;
+    var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null), nodes = [];
+    while (walker.nextNode()) { var n = walker.currentNode; if (n.nodeValue && range.intersectsNode(n)) nodes.push(n); }
+    var wrapped = [];
+    nodes.forEach(function (n) {
+      var start = n === range.startContainer ? range.startOffset : 0;
+      var end = n === range.endContainer ? range.endOffset : n.nodeValue.length;
+      if (start >= end || !n.nodeValue.slice(start, end).trim()) return;      // nothing, or whitespace only
+      var target = n;
+      if (end < n.nodeValue.length) n.splitText(end);
+      if (start > 0) target = n.splitText(start);
+      var p = target.parentNode, span;
+      if (p !== editing.el && p.tagName === 'SPAN' && !p.hasAttribute('data-nbg-orig') && p.childNodes.length === 1 && isFormatSpan(p)) span = p;
+      else { span = document.createElement('span'); p.insertBefore(span, target); span.appendChild(target); }
+      styler(span);
+      if (!span.getAttribute('style')) { while (span.firstChild) span.parentNode.insertBefore(span.firstChild, span); span.parentNode.removeChild(span); wrapped.push(target); }
+      else wrapped.push(span);
+    });
+    if (wrapped.length) {
+      var sel = window.getSelection(), r = document.createRange();
+      r.setStartBefore(wrapped[0]); r.setEndAfter(wrapped[wrapped.length - 1]);
+      sel.removeAllRanges(); sel.addRange(r);
+    }
+    return wrapped.length > 0;
+  }
+  function unwrapSelectionSpans() {
+    var range = currentRange(); if (!range) return;
+    Array.prototype.slice.call(editing.el.querySelectorAll('span[style], b, i, u, s, strong, em, strike')).forEach(function (s) {
+      if (s.hasAttribute('data-nbg-orig') || !range.intersectsNode(s)) return;
+      while (s.firstChild) s.parentNode.insertBefore(s.firstChild, s);
+      s.parentNode.removeChild(s);
+    });
+  }
   function format(action, value) {
     if (!editing) return false;
     restoreSelection();
-    var sel = window.getSelection(), ranged = sel && sel.rangeCount && !sel.isCollapsed && selectionInEditing();
-    var el = editing.el;
+    var range = currentRange(), ranged = !!(range && !range.collapsed), el = editing.el;
+    var f = action === 'bigger' ? 1.1 : 1 / 1.1;
     switch (action) {
       case 'bold': if (ranged) document.execCommand('bold'); else toggleBlock('font-weight', '700', '400'); break;
       case 'italic': if (ranged) document.execCommand('italic'); else toggleBlock('font-style', 'italic', 'normal'); break;
       case 'underline': if (ranged) document.execCommand('underline'); else toggleDecoration('underline'); break;
       case 'strike': if (ranged) document.execCommand('strikeThrough'); else toggleDecoration('line-through'); break;
-      case 'bigger': setFontSize(fontSizePx(el) * 1.1); break;
-      case 'smaller': setFontSize(fontSizePx(el) / 1.1); break;
-      case 'size': if (value) setFontSize(parseFloat(value)); break;
-      case 'family': setTextStyle('font-family', value || ''); break;
-      case 'color': setTextStyle('color', value || ''); break;
+      case 'bigger': case 'smaller':
+        if (ranged) wrapSelection(function (span) { span.style.fontSize = Math.max(8, Math.round(fontSizePx(span) * f)) + 'px'; });
+        else setBlockFontSize(fontSizePx(el) * f);
+        break;
+      case 'size':
+        if (!value) break;
+        if (ranged) wrapSelection(function (span) { span.style.fontSize = Math.max(8, Math.round(parseFloat(value))) + 'px'; });
+        else setBlockFontSize(parseFloat(value));
+        break;
+      case 'family':
+        if (ranged) wrapSelection(function (span) { if (value) span.style.fontFamily = value; else span.style.removeProperty('font-family'); });
+        else setTextStyle('font-family', value || '');
+        break;
+      case 'color':
+        if (ranged) wrapSelection(function (span) { if (value) span.style.color = value; else span.style.removeProperty('color'); });
+        else setTextStyle('color', value || '');
+        break;
       case 'align': setTextStyle('text-align', value || ''); break;
       case 'clear': {
-        // back to the design: the selection loses its b/i/u/s tags, the block returns to the inline
-        // style it had before any formatting was applied (this session's or an earlier saved one)
-        if (ranged) document.execCommand('removeFormat');
-        var rec = findEdit(el, 'style');
-        apply(el, 'style', rec ? rec.original : editing.preStyle);
+        // selection: drop its tags and styled spans; no selection: the block returns to the inline
+        // style it had before any formatting (this session's or an earlier saved one)
+        if (ranged) { document.execCommand('removeFormat'); unwrapSelectionSpans(); }
+        else { var rec = findEdit(el, 'style'); apply(el, 'style', rec ? rec.original : editing.preStyle); }
         break;
       }
       default: return false;
@@ -320,35 +424,30 @@
     layoutTools(); saveSelection();
     return true;
   }
-  function toggleDecoration(kind) {
-    var el = editing.el, cur = (styleProp(el, 'text-decoration') || getComputedStyle(el).textDecorationLine || '').split(/\s+/).filter(function (x) { return x && x !== 'none'; });
-    var i = cur.indexOf(kind);
-    if (i >= 0) cur.splice(i, 1); else cur.push(kind);
-    setTextStyle('text-decoration', cur.length ? cur.join(' ') : 'none');
-  }
   function buildTools() {
     tools = document.createElement('div');
-    tools.id = 'nbg-text-tools';
+    tools.id = 'nbg-text-tools'; tools.className = 'nbg-panel';
     tools.setAttribute('role', 'toolbar');
     var h = '';
-    h += '<button type="button" data-f="bold" title="Bold (Ctrl/Cmd+B) — selection, or the whole text when nothing is selected"><b>B</b></button>';
+    h += '<button type="button" data-f="bold" title="Bold (Ctrl/Cmd+B) — the selection, or the whole text when nothing is selected"><b>B</b></button>';
     h += '<button type="button" data-f="italic" title="Italic (Ctrl/Cmd+I)"><i>I</i></button>';
     h += '<button type="button" data-f="underline" title="Underline (Ctrl/Cmd+U)"><u>U</u></button>';
     h += '<button type="button" data-f="strike" title="Strikethrough"><s>S</s></button>';
     h += '<i class="nbg-tsep"></i>';
-    h += '<button type="button" data-f="smaller" title="Smaller (Ctrl/Cmd+Shift+&lt;)">A−</button>';
-    h += '<input type="number" data-f="size" min="8" max="400" step="1" title="Font size in px" aria-label="Font size">';
-    h += '<button type="button" data-f="bigger" title="Larger (Ctrl/Cmd+Shift+&gt;)">A+</button>';
+    h += '<button type="button" data-f="smaller" title="Smaller (Ctrl/Cmd+Shift+&lt;) — the selection, or the whole text">A−</button>';
+    h += '<input type="number" data-f="size" min="8" max="400" step="1" title="Font size in px — the selection, or the whole text" aria-label="Font size">';
+    h += '<button type="button" data-f="bigger" title="Larger (Ctrl/Cmd+Shift+&gt;) — the selection, or the whole text">A+</button>';
     h += '<i class="nbg-tsep"></i>';
-    h += '<select data-f="family" title="Font family" aria-label="Font family">' + FONTS.map(function (f) { return '<option value="' + f[0].replace(/"/g, '&quot;') + '">' + f[1] + '</option>'; }).join('') + '</select>';
+    h += '<select data-f="family" title="Font family — the selection, or the whole text" aria-label="Font family">' + FONTS.map(function (f) { return '<option value="' + f[0].replace(/"/g, '&quot;') + '">' + f[1] + '</option>'; }).join('') + '</select>';
     h += '<i class="nbg-tsep"></i>';
-    h += '<span class="nbg-swatches" title="Text colour (NBG palette)">' + COLORS.map(function (c) { return '<button type="button" data-f="color" data-v="' + c[0] + '" title="' + c[1] + '" style="' + (c[0] ? 'background:' + c[0] : 'background:linear-gradient(135deg,#fff 45%,#0A1416 55%)') + '"></button>'; }).join('') + '</span>';
+    h += swatches('f="color" data-v', COLORS).replace('<span class="nbg-swatches">', '<span class="nbg-swatches" title="Text colour (NBG palette) — the selection, or the whole text">');
     h += '<i class="nbg-tsep"></i>';
     h += '<button type="button" data-f="align" data-v="left" title="Align left">⇤</button><button type="button" data-f="align" data-v="center" title="Centre">☰</button><button type="button" data-f="align" data-v="right" title="Align right">⇥</button>';
     h += '<i class="nbg-tsep"></i>';
-    h += '<button type="button" data-f="clear" class="nbg-tquiet" title="Clear formatting (this text)">Clear</button>';
+    h += '<button type="button" data-f="clear" class="nbg-tquiet" title="Clear formatting — the selection, or the whole text back to its design">Clear</button>';
     h += '<button type="button" data-f="done" class="nbg-tdone" title="Apply (Enter)">Done</button>';
     tools.innerHTML = h;
+    makeMovable(tools, layoutTools);
     // keep the editable focused and its selection intact while using the buttons
     tools.addEventListener('pointerdown', function (e) { if (!e.target.closest('input, select')) e.preventDefault(); saveSelection(); });
     tools.addEventListener('click', function (e) {
@@ -366,24 +465,28 @@
   }
   function showTools() { if (!tools) buildTools(); tools.hidden = false; layoutTools(); }
   function hideTools() { if (tools) tools.hidden = true; toolsSel = null; }
+  function inlineUp(node, prop) {      // nearest inline value of prop from node up to the edited block
+    var el = node && node.nodeType === 3 ? node.parentElement : node;
+    while (el && editing && (el === editing.el || editing.el.contains(el))) { var v = styleProp(el, prop); if (v) return v; if (el === editing.el) break; el = el.parentElement; }
+    return '';
+  }
   function layoutTools() {
     if (!tools || tools.hidden || !editing) return;
-    var el = editing.el, r = el.getBoundingClientRect(), cs = getComputedStyle(el);
-    tools.style.left = '0px'; tools.style.top = '0px';
-    var tr = tools.getBoundingClientRect();
-    var left = Math.max(8, Math.min(r.left, window.innerWidth - tr.width - 8));
-    var top = r.top - tr.height - 12;
-    if (top < 8) top = Math.min(r.bottom + 12, window.innerHeight - tr.height - 8);
-    tools.style.left = left + 'px'; tools.style.top = top + 'px';
-    tools.querySelector('[data-f=size]').value = Math.round(fontSizePx(el));
-    var fam = styleProp(el, 'font-family'), famSel = tools.querySelector('[data-f=family]');
+    var el = editing.el, range = currentRange();
+    var probe = range ? (range.startContainer.nodeType === 3 ? range.startContainer.parentElement : range.startContainer) : el;
+    if (!probe || !(probe === el || el.contains(probe))) probe = el;
+    var cs = getComputedStyle(probe);
+    placePanel(tools, el.getBoundingClientRect());
+    tools.querySelector('[data-f=size]').value = Math.round(fontSizePx(probe));
+    var fam = inlineUp(probe, 'font-family'), famSel = tools.querySelector('[data-f=family]');
     famSel.value = fam; if (famSel.value !== fam) famSel.value = '';
     tools.querySelector('[data-f=bold]').classList.toggle('nbg-on', parseInt(cs.fontWeight, 10) >= 600);
     tools.querySelector('[data-f=italic]').classList.toggle('nbg-on', cs.fontStyle === 'italic');
     tools.querySelector('[data-f=underline]').classList.toggle('nbg-on', /underline/.test(cs.textDecorationLine));
     tools.querySelector('[data-f=strike]').classList.toggle('nbg-on', /line-through/.test(cs.textDecorationLine));
     Array.prototype.forEach.call(tools.querySelectorAll('[data-f=align]'), function (b) { b.classList.toggle('nbg-on', styleProp(el, 'text-align') === b.getAttribute('data-v')); });
-    Array.prototype.forEach.call(tools.querySelectorAll('[data-f=color]'), function (b) { b.classList.toggle('nbg-on', (styleProp(el, 'color') || '').toLowerCase() === b.getAttribute('data-v').toLowerCase()); });
+    var col = normColor(inlineUp(probe, 'color'));
+    Array.prototype.forEach.call(tools.querySelectorAll('[data-f=color]'), function (b) { b.classList.toggle('nbg-on', col === normColor(b.getAttribute('data-v'))); });
   }
   document.addEventListener('selectionchange', function () { if (editing && tools && !tools.hidden) layoutTools(); });
 
@@ -449,6 +552,7 @@
     box.classList.toggle('nbg-flow', !g.positioned);
     chip.textContent = Math.round(g.width) + ' × ' + Math.round(g.height) + (g.positioned ? ' · L ' + Math.round(g.left) + ' T ' + Math.round(g.top) : g.relative || el.style.position === 'relative' ? ' · Δ ' + Math.round(g.rleft) + ', ' + Math.round(g.rtop) : '');
     chip.classList.toggle('nbg-chip-below', r.top < 40);
+    if (!drag) layoutShapeTools();
   }
   function selectShape(el) {
     if (!el || busy) return false;
@@ -458,13 +562,15 @@
     shape = { el: el };
     box.hidden = false;
     layoutBox();
-    toast('Shape selected — drag the handles to resize (Shift keeps proportions), drag inside to move, arrows nudge, Tab selects the enclosing shape, Esc when done.', 5000);
+    showShapeTools();
+    toast('Shape selected — drag the handles to resize (Shift keeps proportions), drag inside to move, arrows nudge, Tab selects the enclosing shape; the toolbar sets size, fill, border, corners, opacity and shadow. Esc when done.', 5000);
     return true;
   }
   function deselectShape() {
     if (!shape) return false;
     shape = null; drag = null;
     if (box) box.hidden = true;
+    hideShapeTools();
     return true;
   }
   function finishDrag(cancel) {
@@ -539,6 +645,112 @@
   window.addEventListener('pointercancel', function () { finishDrag(true); }, true);
   window.addEventListener('resize', function () { requestAnimationFrame(layoutBox); });
   window.addEventListener('scroll', function () { requestAnimationFrame(layoutBox); }, true);
+
+  /* ---------- shape toolbar (shown while a shape is selected) ---------- */
+  var stools = null;
+  var FILLS = [['', 'Default'], ['transparent', 'Transparent'], ['#003841', 'Deep teal'], ['#007B85', 'Teal'], ['#00ADBF', 'Bright cyan'], ['#00CFE7', 'Electric cyan'], ['#0A1416', 'Black'], ['#5B6B6D', 'Grey'], ['#F5F8F6', 'Cream'], ['#FFFFFF', 'White']];
+  var BORDERS = [['', 'Border: default'], ['0', 'No border'], ['1', 'Border 1 px'], ['2', 'Border 2 px'], ['3', 'Border 3 px'], ['4', 'Border 4 px'], ['6', 'Border 6 px']];
+  var SHADOWS = [['', 'Shadow: default'], ['none', 'No shadow'], ['0 12px 32px rgba(10,20,22,.18)', 'Soft shadow'], ['0 24px 56px rgba(10,20,22,.30)', 'Strong shadow']];
+  function inShapeTools(t) { return !!(stools && t && stools.contains(t)); }
+  function shapeStyle(prop, value) {
+    if (!shape) return;
+    var el = shape.el, pre = attrStyle(el);
+    if (value === '' || value === null) el.style.removeProperty(prop); else el.style.setProperty(prop, value);
+    if (el.getAttribute('style') === '') el.removeAttribute('style');
+    commitShapeStyle(pre);
+  }
+  function commitShapeStyle(pre) {
+    var el = shape.el, now = attrStyle(el);
+    if (now !== pre) { var ed = findEdit(el, 'style'); recordEdit(el, 'style', ed ? ed.original : pre, now); }
+    layoutBox(); layoutShapeTools();
+  }
+  function shapeBorder(v) {
+    if (!shape) return;
+    var el = shape.el, pre = attrStyle(el);
+    if (v === '') ['border', 'border-width', 'border-style', 'border-color'].forEach(function (p) { el.style.removeProperty(p); });
+    else if (v === '0') el.style.setProperty('border', '0');
+    else {
+      el.style.setProperty('border-width', v + 'px'); el.style.setProperty('border-style', 'solid');
+      if (!el.style.borderColor && /^(rgba\(0, 0, 0, 0\)|transparent)$/.test(getComputedStyle(el).borderTopColor)) el.style.setProperty('border-color', ACCENT);
+    }
+    if (el.getAttribute('style') === '') el.removeAttribute('style');
+    commitShapeStyle(pre);
+  }
+  function shapeGeom(prop, v) {
+    if (!shape || isNaN(v)) return;
+    var el = shape.el, g = geom(el), pre = attrStyle(el);
+    if (prop === 'width' || prop === 'height') {
+      if (g.positioned) setPos(el, g, g.left, g.top);
+      setSize(el, g, prop === 'width' ? Math.max(16, v) : null, prop === 'height' ? Math.max(16, v) : null);
+    } else if (g.positioned) setPos(el, g, prop === 'left' ? v : g.left, prop === 'top' ? v : g.top);
+    else setPos(el, g, prop === 'left' ? v : g.rleft, prop === 'top' ? v : g.rtop);
+    commitShapeStyle(pre);
+  }
+  function buildShapeTools() {
+    stools = document.createElement('div');
+    stools.id = 'nbg-shape-tools'; stools.className = 'nbg-panel';
+    stools.setAttribute('role', 'toolbar');
+    var h = '';
+    h += '<label title="Left (px on the artboard; offset for elements in normal flow)">X<input type="number" data-s="left" step="1"></label>';
+    h += '<label title="Top">Y<input type="number" data-s="top" step="1"></label>';
+    h += '<label title="Width">W<input type="number" data-s="width" min="16" step="1"></label>';
+    h += '<label title="Height">H<input type="number" data-s="height" min="16" step="1"></label>';
+    h += '<i class="nbg-tsep"></i>';
+    h += swatches('s="fill" data-v', FILLS).replace('<span class="nbg-swatches">', '<span class="nbg-swatches" title="Fill (NBG palette)">');
+    h += '<i class="nbg-tsep"></i>';
+    h += '<select data-s="border" title="Border">' + BORDERS.map(function (b) { return '<option value="' + b[0] + '">' + b[1] + '</option>'; }).join('') + '</select>';
+    h += swatches('s="bordercolor" data-v', COLORS).replace('<span class="nbg-swatches">', '<span class="nbg-swatches" title="Border colour (NBG palette)">');
+    h += '<i class="nbg-tsep"></i>';
+    h += '<label title="Corner radius (px)">◜<input type="number" data-s="radius" min="0" step="1"></label>';
+    h += '<label title="Opacity (%)">◐<input type="number" data-s="opacity" min="0" max="100" step="5"></label>';
+    h += '<select data-s="shadow" title="Shadow">' + SHADOWS.map(function (b) { return '<option value="' + b[0] + '">' + b[1] + '</option>'; }).join('') + '</select>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<button type="button" data-s="reset" class="nbg-tquiet" title="Restore this element’s original size, position and style">Reset</button>';
+    h += '<button type="button" data-s="done" class="nbg-tdone" title="Finish (Esc)">Done</button>';
+    stools.innerHTML = h;
+    makeMovable(stools, layoutShapeTools);
+    stools.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b || !shape) return;
+      e.preventDefault();
+      var a = b.getAttribute('data-s');
+      if (a === 'done') deselectShape();
+      else if (a === 'reset') resetShape(shape.el);
+      else if (a === 'fill') shapeStyle('background-color', b.getAttribute('data-v'));
+      else if (a === 'bordercolor') shapeStyle('border-color', b.getAttribute('data-v'));
+    });
+    stools.addEventListener('change', function (e) {
+      var t = e.target, a = t.getAttribute('data-s'); if (!a || !shape) return;
+      if (/^(left|top|width|height)$/.test(a)) shapeGeom(a, parseFloat(t.value));
+      else if (a === 'border') shapeBorder(t.value);
+      else if (a === 'radius') shapeStyle('border-radius', t.value === '' ? '' : Math.max(0, parseFloat(t.value)) + 'px');
+      else if (a === 'opacity') shapeStyle('opacity', t.value === '' ? '' : String(Math.max(0, Math.min(100, parseFloat(t.value))) / 100));
+      else if (a === 'shadow') shapeStyle('box-shadow', t.value);
+    });
+    stools.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); e.target.dispatchEvent(new Event('change', { bubbles: true })); }
+      if (e.key === 'Escape') { e.preventDefault(); deselectShape(); }
+    });
+    document.body.appendChild(stools);
+  }
+  function showShapeTools() { if (!stools) buildShapeTools(); stools.hidden = false; layoutShapeTools(); }
+  function hideShapeTools() { if (stools) stools.hidden = true; }
+  function layoutShapeTools() {
+    if (!stools || stools.hidden || !shape) return;
+    var el = shape.el, g = geom(el), st = el.style;
+    placePanel(stools, el.getBoundingClientRect());
+    var set = function (k, v) { var i = stools.querySelector('[data-s=' + k + ']'); if (document.activeElement !== i) i.value = v; };
+    set('left', Math.round(g.positioned ? g.left : g.rleft)); set('top', Math.round(g.positioned ? g.top : g.rtop));
+    set('width', Math.round(g.width)); set('height', Math.round(g.height));
+    var fill = normColor(st.backgroundColor);
+    Array.prototype.forEach.call(stools.querySelectorAll('[data-s=fill]'), function (b) { b.classList.toggle('nbg-on', !!fill && fill === normColor(b.getAttribute('data-v'))); });
+    var bw = st.border === '0px' || st.borderWidth === '0px' ? '0' : st.borderWidth ? String(parseInt(st.borderWidth, 10)) : '';
+    var bsel = stools.querySelector('[data-s=border]'); bsel.value = bw; if (bsel.value !== bw) bsel.value = '';
+    var bc = normColor(st.borderColor);
+    Array.prototype.forEach.call(stools.querySelectorAll('[data-s=bordercolor]'), function (b) { b.classList.toggle('nbg-on', !!bc && bc === normColor(b.getAttribute('data-v'))); });
+    set('radius', st.borderRadius ? parseInt(st.borderRadius, 10) : ''); set('opacity', st.opacity ? Math.round(parseFloat(st.opacity) * 100) : '');
+    var ssel = stools.querySelector('[data-s=shadow]'); ssel.value = st.boxShadow || ''; if (ssel.value !== (st.boxShadow || '')) ssel.value = '';
+  }
 
   /* ---------- discard / save ---------- */
   function discardEdits() {
@@ -640,18 +852,21 @@
     '#nbg-shape-box .nbg-chip{position:absolute;left:0;top:-30px;white-space:nowrap;padding:3px 8px;border-radius:6px;background:' + INK + ';color:#fff;' +
     'font:12px/1.4 ' + FONT + ';pointer-events:none}' +
     '#nbg-shape-box .nbg-chip.nbg-chip-below{top:auto;bottom:-30px}' +
-    '#nbg-text-tools{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:2px;padding:4px 6px;background:#fff;color:' + INK + ';' +
-    'border:1px solid rgba(0,56,65,.14);border-radius:10px;box-shadow:0 10px 28px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:13px/1 ' + FONT + ';user-select:none;-webkit-user-select:none}' +
-    '#nbg-text-tools button{border:0;background:transparent;color:inherit;font:inherit;min-width:28px;height:28px;padding:0 6px;border-radius:6px;cursor:pointer;line-height:28px}' +
-    '#nbg-text-tools button:hover{background:' + CREAM + '}#nbg-text-tools button.nbg-on{background:' + ACCENT + ';color:#fff}' +
-    '#nbg-text-tools button.nbg-tquiet{color:' + MUTED + '}#nbg-text-tools button.nbg-tdone{background:' + CYAN + ';color:' + INK + ';font-weight:600;margin-left:4px}' +
-    '#nbg-text-tools input[type=number]{width:52px;height:26px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 4px;text-align:center;color:inherit;background:#fff}' +
-    '#nbg-text-tools select{height:26px;max-width:150px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 4px;color:inherit;background:#fff}' +
-    '#nbg-text-tools .nbg-tsep{width:1px;height:20px;margin:0 4px;background:rgba(0,56,65,.14)}' +
-    '#nbg-text-tools .nbg-swatches{display:inline-flex;gap:3px;align-items:center}' +
-    '#nbg-text-tools .nbg-swatches button{min-width:16px;width:16px;height:16px;padding:0;border-radius:50%;border:1px solid rgba(0,56,65,.3)}' +
-    '#nbg-text-tools .nbg-swatches button.nbg-on{box-shadow:0 0 0 2px #fff,0 0 0 4px ' + CYAN + '}' +
-    '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-text-tools{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
+    '.nbg-panel{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:2px;padding:4px 6px;background:#fff;color:' + INK + ';' +
+    'border:1px solid rgba(0,56,65,.14);border-radius:10px;box-shadow:0 10px 28px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:13px/1 ' + FONT + ';user-select:none;-webkit-user-select:none;max-width:calc(100vw - 16px);flex-wrap:wrap}' +
+    '.nbg-panel[hidden]{display:none!important}' +
+    '.nbg-panel .nbg-grip{cursor:grab;color:' + MUTED + ';padding:0 4px;letter-spacing:-2px;font-size:14px;line-height:28px;touch-action:none}.nbg-panel .nbg-grip:active{cursor:grabbing}' +
+    '.nbg-panel button{border:0;background:transparent;color:inherit;font:inherit;min-width:28px;height:28px;padding:0 6px;border-radius:6px;cursor:pointer;line-height:28px}' +
+    '.nbg-panel button:hover{background:' + CREAM + '}.nbg-panel button.nbg-on{background:' + ACCENT + ';color:#fff}' +
+    '.nbg-panel button.nbg-tquiet{color:' + MUTED + '}.nbg-panel button.nbg-tdone{background:' + CYAN + ';color:' + INK + ';font-weight:600;margin-left:4px}' +
+    '.nbg-panel input[type=number]{width:52px;height:26px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 4px;text-align:center;color:inherit;background:#fff}' +
+    '.nbg-panel label{display:inline-flex;align-items:center;gap:3px;color:' + MUTED + ';font-size:12px;margin:0 2px}.nbg-panel label input{width:56px}' +
+    '.nbg-panel select{height:26px;max-width:150px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 4px;color:inherit;background:#fff}' +
+    '.nbg-panel .nbg-tsep{width:1px;height:20px;margin:0 4px;background:rgba(0,56,65,.14)}' +
+    '.nbg-panel .nbg-swatches{display:inline-flex;gap:3px;align-items:center}' +
+    '.nbg-panel .nbg-swatches button{min-width:16px;width:16px;height:16px;padding:0;border-radius:50%;border:1px solid rgba(0,56,65,.3)}' +
+    '.nbg-panel .nbg-swatches button.nbg-on{box-shadow:0 0 0 2px #fff,0 0 0 4px ' + CYAN + '}' +
+    '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,.nbg-panel{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
   document.head.appendChild(style);
 
   var menu = null, menuTarget = null, menuShape = null;
@@ -739,7 +954,7 @@
   document.addEventListener('pointerdown', function (e) {
     if (menu && !menu.hidden && !menu.contains(e.target)) closeMenu();
     if (editing && !editing.el.contains(e.target) && !inTools(e.target) && !(menu && menu.contains(e.target))) commitEdit();
-    if (shape && !(box && box.contains(e.target)) && !(menu && menu.contains(e.target))) deselectShape();
+    if (shape && !(box && box.contains(e.target)) && !inShapeTools(e.target) && !(menu && menu.contains(e.target))) deselectShape();
   }, true);
   document.addEventListener('focusout', function (e) {
     if (editing && e.target === editing.el && !inTools(e.relatedTarget)) {
@@ -779,6 +994,7 @@
         return;
       }
       if (shape && !(menu && !menu.hidden)) {
+        if (inShapeTools(e.target)) return;                                                     // the toolbar's inputs handle their own keys
         e.stopPropagation();
         if (type !== 'keydown') return;
         var step = e.shiftKey ? 10 : 1;

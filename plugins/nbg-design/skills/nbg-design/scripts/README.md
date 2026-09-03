@@ -145,7 +145,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 - Inlines one `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">` before the
   last `</body>`: `lib/print-layout.js` (the print-layout shim shared with `export-pdf.mjs`)
   followed by `lib/deck-menu.js` (menu UI, editing, persistence, saved copy, print
-  orchestration). The deck stays fully self-contained (~58 KB more).
+  orchestration). The deck stays fully self-contained (~72 KB more).
 - Idempotent: re-running reports `already current`, refreshes a same-version block, or
   upgrades an older one (including the v1.4 `nbg-pdf-menu-script` block). `--remove` strips it.
 - The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Edit text* (when the
@@ -162,18 +162,26 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   are tagged during the edit so they can be told apart. The slide's CSS is never touched, and
   the element's `white-space` and box do not change while editing (rich mode, not
   `plaintext-only`, which would force `pre-wrap` and re-flow the text).
-- **Formatting toolbar** (`#nbg-text-tools`, floats above the text while editing): B / I / U / S
-  act on the selected run through `execCommand` with `styleWithCSS` off (semantic tags, no
-  styled spans) or, with a collapsed caret, toggle the whole block via inline `font-weight` /
-  `font-style` / `text-decoration`; A− / A+ scale the block's font-size by 10 % and the size
-  field sets an exact px value (the block gets a unitless `line-height` equal to its current
-  ratio the first time, so a px-fixed line-height does not collapse); font family from the
-  design system's stacks; text colour from the NBG palette; alignment; Clear (`removeFormat` on
-  the selection plus removal of the block's text properties); Done. `pointerdown` on the toolbar
-  is default-prevented so the editable keeps focus and its selection; the size field and family
-  select save/restore the selection around their own focus. Shortcuts: Ctrl/Cmd+B/I/U
-  (collapsed caret → whole block), Ctrl/Cmd+Shift+> / <. Block formatting changes the element's
-  `style` attribute and is recorded as a `style` edit alongside the `html` edit; Esc restores both.
+- **Formatting toolbar** (`#nbg-text-tools`, a `.nbg-panel` floating above the text while
+  editing; drag it anywhere by the `⋮⋮` grip, double-click the grip to re-dock). Every control is
+  selection-aware: with a selection it changes only the selected run, with a collapsed caret the
+  whole block. B / I / U / S on a run go through `execCommand` with `styleWithCSS` off (semantic
+  tags; an un-bold inside a CSS-bold block arrives as a formatting span and is kept); on the block
+  they toggle inline `font-weight` / `font-style` / `text-decoration`. A− / A+ (x1.1), the exact
+  px size, font family (design-system stacks) and text colour (NBG palette) wrap exactly the
+  selected text runs in `<span style>` (`wrapSelection`: text nodes intersecting the range are
+  split at the boundaries and wrapped, reusing a span that already wraps just that run) or become
+  block inline style (the block gets a unitless `line-height` equal to its current ratio the first
+  time, so a px-fixed line-height does not collapse). Alignment is block-level. Clear removes the
+  selection's tags and spans (`removeFormat` + unwrap) or returns the block to the inline style it
+  had before any formatting. Done applies. `pointerdown` on the toolbar is default-prevented so
+  the editable keeps focus and its selection; the size field and family select save/restore the
+  selection around their own focus; the live selection is authoritative while the editable is
+  focused. Shortcuts: Ctrl/Cmd+B/I/U (collapsed caret → whole block), Ctrl/Cmd+Shift+> / <.
+  Block formatting changes the element's `style` attribute and is recorded as a `style` edit
+  alongside the `html` edit; selection spans travel in the `html` edit; Esc restores both.
+  Panels hide through `.nbg-panel[hidden]{display:none!important}` (a bare `hidden` attribute
+  loses to the panel's `display:flex`).
 - **Resize / move shape**: offered for the card, photo panel, image, decorative block or text
   block under the pointer (an element is a "shape" when it is positioned, has a background,
   border or shadow, or is an image; otherwise the text block is used). A fixed-position
@@ -186,6 +194,14 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   proportions; arrows nudge 1 px (Shift 10), Alt+arrows resize; Tab selects the enclosing shape;
   Esc cancels a drag in progress or finishes; the frame is hidden in the print layout.
   *Reset shape* restores one element's original inline style.
+- **Shape toolbar** (`#nbg-shape-tools`, a draggable `.nbg-panel` that appears with the frame):
+  X / Y / W / H number fields (artboard px for positioned elements, relative offsets for flow
+  elements; a resize pins the top-left corner like the handles do), fill swatches (NBG palette,
+  transparent, Default = remove), border select (Default / none / 1–6 px; a new border gets
+  `solid` and deep teal unless a colour is set) with palette colour swatches, corner radius,
+  opacity (%), shadow (Default / none / soft / strong), Reset (same as *Reset shape*), Done.
+  Each change writes the element's inline style and updates the same `style` record as its
+  geometry. Keys typed in its inputs are not treated as deck shortcuts.
 - **Persistence**: edits are recorded as `{ path, kind: 'html' | 'style', original, value }`
   (child-index path from the root) and stored in `localStorage` under
   `nbg-deck-edits:<pathname>#<title>`; a reload re-applies them, dropping entries whose original
