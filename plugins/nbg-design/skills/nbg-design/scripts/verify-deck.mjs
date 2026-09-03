@@ -105,6 +105,13 @@ function main() {
     else if (!current) warn.push(`Deck carries the older PDF-only menu (v${legacy}) — run add-deck-menu.mjs to upgrade to the menu with in-place text editing.`);
     else if (!html.includes('function nbgPreparePrintLayout') || !html.includes('window.nbgDeck')) {
       hard.push('The nbg-deck-menu block is present but incomplete — re-run add-deck-menu.mjs.');
+    } else {
+      // the skill's current menu version (read from the bundled source; absent when only verify-deck.mjs travelled)
+      let latest = null;
+      try { latest = (readFileSync(new URL('./lib/deck-menu.js', import.meta.url), 'utf8').match(/var VERSION = (\d+);/) || [])[1]; } catch { /* optional */ }
+      if (latest && parseInt(current, 10) < parseInt(latest, 10)) {
+        warn.push(`Deck menu block is v${current}; the skill ships v${latest} — run add-deck-menu.mjs to upgrade (it replaces the block in place).`);
+      }
     }
   }
 

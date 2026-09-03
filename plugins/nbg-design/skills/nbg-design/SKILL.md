@@ -1,6 +1,6 @@
 ---
 name: nbg-design
-description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu for in-place text editing, "Export to PDF" and "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu for in-place text editing, shape resize/move, "Export to PDF" and "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 ---
 
 # NBG Design
@@ -104,7 +104,7 @@ Hand-pasting large base64 blobs is the step that most often fails in non-interac
    The script resolves the bundled assets relative to itself (not the cwd), so it works on any machine. It replaces every token with the verbatim `data:` URI and fails loudly if an asset is missing.
 3. **Add the in-deck right-click menu (standard for every delivered deck).**
    `node "<skill-root>/scripts/add-deck-menu.mjs" <deck>.html`
-   Inlines one self-contained `<script id="nbg-deck-menu-script">` before the last `</body>` (idempotent; re-running upgrades an older menu, including the v1.4 PDF-only one). Viewers get *Edit text* (in-place editing, also by double-click), *Export to PDF*, *Save edited copy* and *Discard edits*. See "In-deck right-click menu". Skip only if the user explicitly declines the menu, and then verify with `--no-deck-menu`.
+   Inlines one self-contained `<script id="nbg-deck-menu-script">` before the last `</body>` (idempotent; re-running upgrades an older menu, including the v1.4 PDF-only one). Viewers get *Edit text* (in-place editing, also by double-click), *Resize / move shape*, *Export to PDF*, *Save edited copy* and *Discard edits*. See "In-deck right-click menu". Skip only if the user explicitly declines the menu, and then verify with `--no-deck-menu`.
 4. **Verify before delivery (browser-free — works headless).**
    `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict`
    It exits non-zero if any image is not a `data:` URI, if forbidden `file://`/absolute/relative paths remain, if tokens are unresolved, or (in `--strict`) if the deck is suspiciously small / photo-less, contains bare `NBG`/`NPG` text that may be a logo substitute, or lacks the right-click deck menu. **Never deliver a deck that fails this gate.**
@@ -120,11 +120,12 @@ Hand-pasting large base64 blobs is the step that most often fails in non-interac
 
 Before delivering HTML, verify: (a) every `<img>`/`background-image` value starts with `data:image/` — grep the file and confirm there are **zero** `file://`, absolute, or relative image paths; and (b) a real NBG lockup image (not a text/CSS placeholder) appears wherever a logo is expected. The fastest way to perform both checks is to run `scripts/verify-deck.mjs <deck>.html --strict` (above), which works even on a headless host with no browser.
 
-## In-deck right-click menu (text editing & PDF export)
+## In-deck right-click menu (text editing, shape resizing & PDF export)
 
-Every delivered HTML deck carries a self-contained right-click menu, inlined by `scripts/add-deck-menu.mjs` (NBG-styled: white panel, teal accent rule, Aptos stack; Escape or a click outside closes it; right-clicking a link or form field keeps the browser's native menu). It adds ~20 KB and lives outside the slides, so it never appears in the slide area of screenshots, in PDFs, or in the print layout.
+Every delivered HTML deck carries a self-contained right-click menu, inlined by `scripts/add-deck-menu.mjs` (NBG-styled: white panel, teal accent rule, Aptos stack; Escape or a click outside closes it; right-clicking a link or form field keeps the browser's native menu). It adds ~44 KB and lives outside the slides, so it — and the shape selection frame — never appears in the slide area of screenshots, in PDFs, or in the print layout.
 
 - **Edit text** — offered when the right-click landed on text; **double-clicking any text on a slide does the same**. The element (the whole text block, so accent spans inside a title stay intact) becomes editable in place with a teal outline: typing, Backspace, Shift+Enter for a line break, Ctrl/Cmd+Z; **Enter or a click outside applies, Esc cancels**. The slide's CSS is never touched: formatting shortcuts are blocked, paste and drop insert plain text, and anything the browser wraps around typed text is unwrapped when the edit is applied. Deck keyboard shortcuts (arrows, space) are suppressed while editing.
+- **Resize / move shape** — offered for the card, photo panel, image, decorative block or text block under the pointer (the hint names it with its size). A teal selection frame with eight handles appears: drag a handle to resize (Shift keeps the proportions), drag inside to move, arrow keys nudge by 1 px (Shift 10 px), Alt+arrows resize, Tab selects the enclosing shape, Esc/Enter/click outside finishes. Elements in normal flow get only the east/south/corner handles (they grow right and down). Only the element's inline geometry changes (`left/top/width/height`, plus `position:relative` for a moved flow element); pointer deltas are divided by the slide's current scale, so coordinates stay exact artboard pixels at any viewport size. **Reset shape** restores one element's original geometry.
 - **Edits persist** in the browser's storage (keyed by the file) so a reload keeps them until they are saved or discarded. They live only in that browser: the file on disk is unchanged until the viewer saves a copy.
 - **Save edited copy** — downloads `<name>-edited.html`: the edits applied to a pristine snapshot of the deck taken at load, so the copy loads exactly like the original, stays fully self-contained and carries the menu itself. **Discard edits** restores every original text.
 - **Export to PDF** — see "PDF output → Export from the in-deck menu".
@@ -132,9 +133,9 @@ Every delivered HTML deck carries a self-contained right-click menu, inlined by 
 Rules for the agent:
 
 - Run `add-deck-menu.mjs` after `embed-assets.mjs` and before `verify-deck.mjs --strict` (which requires the menu unless `--no-deck-menu` is passed because the user declined it). Re-running upgrades an older block.
-- The menu edits **text only**. Layout, images, colours and structure stay the skill's job; if the user wants those changed, regenerate the deck.
+- The menu edits **text and geometry only** (what a viewer can fix on the spot: a word, a card that should be wider, a photo panel nudged). Colours, typography, images, new elements and structure stay the skill's job; if the user wants those changed, regenerate the deck. Shape changes are per element and do not re-flow neighbours: a viewer who widens one card in a row must move the next one too, and the overlap rules of this skill still apply to the result.
 - The CLI exporter prints the file on disk, not a viewer's unsaved edits. To deliver a PDF of an edited deck, export the saved `-edited.html` copy.
-- When handing over a deck, tell the user in one line: double-click any text to edit it (Enter applies, Esc cancels); right-click for *Export to PDF* and *Save edited copy*.
+- When handing over a deck, tell the user in one line: double-click any text to edit it (Enter applies, Esc cancels); right-click for *Resize / move shape*, *Export to PDF* and *Save edited copy*.
 
 ## PDF output (export from the HTML deck)
 
@@ -188,7 +189,7 @@ Scripts (zero-dependency Node, see `scripts/README.md`):
 - `scripts/lib/find-browser.mjs` — shared Chrome/Chromium/Edge locator.
 - `scripts/lib/cdp.mjs` — shared DevTools-protocol client (launch, navigate, evaluate, print).
 - `scripts/lib/print-layout.js` — the print-layout shim shared by the exporter and the in-deck menu (browser JS).
-- `scripts/lib/deck-menu.js` — the in-deck menu: UI, in-place text editing, persistence, saved copy, print orchestration (browser JS, inlined by `add-deck-menu.mjs`).
+- `scripts/lib/deck-menu.js` — the in-deck menu: UI, in-place text editing, shape resize/move, persistence, saved copy, print orchestration (browser JS, inlined by `add-deck-menu.mjs`).
 
 Core configuration and references:
 
@@ -246,7 +247,7 @@ Do not use or expect these adjacent project artifacts unless the user explicitly
 Before delivering NBG slide work:
 
 - For HTML output, run `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict` and confirm it passes. This is mandatory and works on a headless host. Never report a deck complete while it fails. (Embed assets with `scripts/embed-assets.mjs` first; see "Deterministic embedding & verification".)
-- For HTML output, confirm the right-click deck menu was added with `scripts/add-deck-menu.mjs` (the strict gate checks for it) and tell the user how to use it (double-click to edit text; right-click for Export to PDF / Save edited copy), unless the user declined it.
+- For HTML output, confirm the right-click deck menu was added with `scripts/add-deck-menu.mjs` (the strict gate checks for it and warns when the block is older than the skill's) and tell the user how to use it (double-click to edit text; right-click for Resize / move shape, Export to PDF, Save edited copy), unless the user declined it.
 - Confirm every slide has a clear purpose.
 - Confirm colors match the bundled NBG palette.
 - Confirm the language is consistent with the request or the approved English default.

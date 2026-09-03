@@ -53,8 +53,9 @@ images.
 **`--strict` also fails on:** fewer than `--min-images` embedded images (default 2); file
 smaller than `--min-bytes` (default 200000) — a photo-less deck is the classic tell; bare
 `>NBG<` / `>NPG<` text nodes that may be a text/box substitute for the logo lockup; a missing
-right-click deck menu (section 5; `--no-deck-menu` only when the user declined it) or the
-older PDF-only v1.4 block. A present-but-incomplete menu block is a hard failure in every mode.
+right-click deck menu (section 5; `--no-deck-menu` only when the user declined it), the
+older PDF-only v1.4 block, or a block older than the version the skill ships (re-run
+`add-deck-menu.mjs`). A present-but-incomplete menu block is a hard failure in every mode.
 
 ## 3. Screenshot the deck — `screenshot-deck.mjs` (optional, needs a browser)
 
@@ -144,11 +145,12 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 - Inlines one `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">` before the
   last `</body>`: `lib/print-layout.js` (the print-layout shim shared with `export-pdf.mjs`)
   followed by `lib/deck-menu.js` (menu UI, editing, persistence, saved copy, print
-  orchestration). The deck stays fully self-contained (~20 KB more).
+  orchestration). The deck stays fully self-contained (~44 KB more).
 - Idempotent: re-running reports `already current`, refreshes a same-version block, or
   upgrades an older one (including the v1.4 `nbg-pdf-menu-script` block). `--remove` strips it.
 - The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Edit text* (when the
-  right-click landed on text), *Export to PDF*, and — once edits exist — *Save edited copy*
+  right-click landed on text), *Resize / move shape* (when it landed on a shape; *Reset shape*
+  once that shape was changed), *Export to PDF*, and — once edits exist — *Save edited copy*
   and *Discard edits*, plus *Cancel*. Escape / click outside closes it; arrow keys move; deck
   shortcuts are suppressed while it is open; right-clicking a link or form field keeps the
   browser's native menu.
@@ -160,9 +162,22 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   tagged during the edit so they can be told apart. The slide's CSS is never touched, and the
   element's `white-space` and box do not change while editing (rich mode, not `plaintext-only`,
   which would force `pre-wrap` and re-flow the text).
-- **Persistence**: edits are recorded as `{ path, original, html }` (child-index path from the
-  root) and stored in `localStorage` under `nbg-deck-edits:<pathname>#<title>`; a reload
-  re-applies them, dropping entries whose original markup no longer matches.
+- **Resize / move shape**: offered for the card, photo panel, image, decorative block or text
+  block under the pointer (an element is a "shape" when it is positioned, has a background,
+  border or shadow, or is an image; otherwise the text block is used). A fixed-position
+  selection frame (`#nbg-shape-box`) with eight handles follows the element's bounding rect;
+  flow elements get only the east/south/corner handles. Dragging converts pointer deltas
+  through the slide's current scale (`slide.getBoundingClientRect().width / slide.offsetWidth`)
+  and writes inline `width`/`height` (respecting the element's `box-sizing`) and, for
+  positioned elements, `left`/`top` with `right`/`bottom: auto` so the top-left corner is pinned;
+  a moved flow element gets `position: relative` offsets. Shift on a corner keeps the
+  proportions; arrows nudge 1 px (Shift 10), Alt+arrows resize; Tab selects the enclosing shape;
+  Esc cancels a drag in progress or finishes; the frame is hidden in the print layout.
+  *Reset shape* restores one element's original inline style.
+- **Persistence**: edits are recorded as `{ path, kind: 'html' | 'style', original, value }`
+  (child-index path from the root) and stored in `localStorage` under
+  `nbg-deck-edits:<pathname>#<title>`; a reload re-applies them, dropping entries whose original
+  markup or style no longer matches.
 - **Save edited copy**: applies the edits to a pristine snapshot of the deck taken when the
   script ran (`DOMParser`; path lookup with a unique-markup fallback) and downloads
   `<name>-edited.html` — loads exactly like the original, still self-contained, still carrying
@@ -173,9 +188,10 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   the viewport-fit scaling — when the dialog closes. Ctrl/Cmd+P and the browser's Print command
   use the same `beforeprint`/`afterprint` hooks, so any print of the deck is faithful.
 - `window.nbgDeck = { version, pdf: { prepare, restore, exportPdf }, edit: { start, commit,
-  cancel, isEditing, list, buildEditedHtml, save, discard }, resolveTextTarget }` is exposed
-  (`window.nbgPdf` aliases the pdf part); an external driver sets
-  `window.__nbgPdfExternal = true` to keep the print hooks idle (`export-pdf.mjs` does).
+  cancel, isEditing, list, buildEditedHtml, save, discard }, shape: { select, deselect,
+  selected, reset }, resolveTextTarget, resolveShapeTarget }` is exposed (`window.nbgPdf`
+  aliases the pdf part); an external driver sets `window.__nbgPdfExternal = true` to keep the
+  print hooks idle (`export-pdf.mjs` does).
 - Chrome and Edge honour the page's `@page { size: 1920px 1080px; margin: 0 }` in the dialog;
   the viewer only has to pick *Save as PDF* (keep Scale 100 %). Safari's `@page size` support
   is partial — the CLI exporter remains the deterministic reference.

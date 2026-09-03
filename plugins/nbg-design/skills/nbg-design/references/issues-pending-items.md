@@ -41,6 +41,13 @@
 
 ## Completed Items
 
+### 2026-09-03 — Added in-place shape resizing / moving to the in-deck menu (skill v1.6.0)
+- Detected: User asked for in-place resizing of the shapes directly in the produced HTML presentation.
+- Affected files: `scripts/lib/deck-menu.js` (v3: shape selection frame, drags, keyboard, reset; edit records generalised to `{ path, kind, original, value }`), `scripts/verify-deck.mjs` (warns when the block is older than the skill's version), `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `scripts/README.md`, plugin README, references, manifests (1.5.0 → 1.6.0).
+- Solution: Right-click → *Resize / move shape* selects the card/panel/image/text block under the pointer; eight handles resize (Shift keeps proportions), dragging inside moves, arrows nudge, Alt+arrows resize, Tab selects the parent, Esc finishes; *Reset shape* restores one element. Deltas are converted through the slide's scale; only inline geometry changes; positioned elements are pinned at their top-left before a resize; flow elements grow right/down and move with `position: relative`. Same persistence / saved copy / discard as text edits; the frame is hidden when printing.
+- Defect found and fixed during verification: resizing a right-anchored card with the east handle also shifted its left edge (the `right` anchor held and `width` grew leftwards); the top-left corner is now pinned on every resize of a positioned element.
+- Verification: `test_scripts/deck-menu-roundtrip.mjs` (development workspace) on the three real decks — all checks pass, including exact scaled deltas at a 0.71 viewport scale; saved copies carry the geometry and pass `verify-deck.mjs --strict`.
+
 ### 2026-09-03 — Fixed: menu injector silently did nothing when invoked through a symlinked skill path
 - Detected: Reported by a teammate session running the pipeline from a project whose `.claude/skills/nbg-design` is a symlink to the plugin checkout: `add-pdf-menu.mjs` exited 0 with no output, the deck got no menu, and `verify-deck.mjs --strict` failed with "menu missing".
 - Cause: The "run as CLI only when invoked directly" guard compared `resolve(process.argv[1])` (the symlinked path) with `import.meta.url` (which Node resolves to the real path), so `main()` never ran. The other scripts have no such guard and were unaffected.
