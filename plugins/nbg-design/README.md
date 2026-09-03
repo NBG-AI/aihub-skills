@@ -29,6 +29,10 @@ Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-men
   select several, All / None, filter), the element tree synced both ways with the selection, and
   the selected element's editable source; Apply records the change like every other edit
   (scripts are stripped).
+- **Toolbars** — a menu section ticks the visible toolbars: tick to show and pin one (it follows the
+  selection, idle when nothing applies), untick or its ✕ to hide it, *Automatic* for the default.
+  Every toolbar adapts to the selection and the slide; the text toolbar also formats selected text
+  blocks without entering edit mode.
 - Edits survive a reload and **Save edited copy** downloads the deck with the changes baked in;
   **Discard changes on this slide** restores one slide, **Discard edits** restores them all.
 - **Export to PDF** — choose *Save as PDF* in the browser's print dialog and get the same

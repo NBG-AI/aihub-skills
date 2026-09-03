@@ -50,6 +50,14 @@
  *     the toolbar's Stack list offers the enclosing shapes, the selected one and its child shapes,
  *     Ctrl/Cmd+click on the same spot cycles outward, Tab / Shift+Tab step out / in.
  *
+ * Toolbars (menu "Toolbars" section): each toolbar — text formatting, shape & arrange, structure /
+ * HTML — is 'auto' (appears with the selection), 'on' (pinned: stays visible, idle when nothing
+ * applies) or 'off' (closed with its ✕ or unticked in the menu; stays hidden until shown again);
+ * the choice is remembered per deck in this browser. Every toolbar follows the selection: the text
+ * toolbar formats the text being edited or, without an edit session, every selected text block at
+ * block level; the shape toolbar shows the selection's geometry and style; the structure panel
+ * follows the selection and the slide; a slide change drops an off-screen selection.
+ *
  * Structure / HTML panel (menu "Show structure" / "Show HTML", toolbar </>, Ctrl/Cmd+Shift+O / H)
  *   - Outline tab: only the shapes (cards, text blocks, images) nested by containment, with a
  *     checkbox per row for picking several, All / None, a text filter, kind icons, sizes, group
@@ -91,7 +99,7 @@
  */
 (function () {
   if (window.nbgDeck) return;
-  var VERSION = 7;
+  var VERSION = 8;
   var ACCENT = '#003841', CYAN = '#00ADBF', INK = '#0A1416', CREAM = '#F5F8F6', MUTED = '#5B6B6D';
   var FONT = "'Aptos', 'Inter', Helvetica, Arial, sans-serif";
 
@@ -233,6 +241,31 @@
   }
   function changesLabel() { return edits.length + ' unsaved change' + (edits.length === 1 ? '' : 's'); }
 
+  /* ---------- toolbar visibility: 'auto' (with the selection), 'on' (pinned), 'off' (closed by the viewer) ---------- */
+  var UI_KEY = 'nbg-deck-ui:' + location.pathname;
+  var ui = { text: 'auto', shape: 'auto', code: 'auto' };   // code: 'auto' = opens on request only
+  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) ['text', 'shape', 'code'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); } catch (e) { /* storage unavailable */ }
+  function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ignore */ } }
+  var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML' };
+  function textTargets() { return editing ? [editing.el] : sel.filter(hasOwnText); }   // what the text toolbar works on
+  function toolbarWanted(k) {
+    if (ui[k] === 'off') return false;
+    if (ui[k] === 'on') return true;
+    if (k === 'text') return !!editing || textTargets().length > 0;
+    if (k === 'shape') return !!shape;
+    return false;                                   // the structure panel opens on request only
+  }
+  function toolbarPanel(k) { return k === 'text' ? tools : k === 'shape' ? stools : code; }
+  function toolbarVisible(k) { var p = toolbarPanel(k); return !!(p && !p.hidden); }
+  function setToolbarMode(k, mode) { ui[k] = mode; uiSave(); syncToolbars(); }
+  // show / hide every toolbar according to its mode and the current selection, then lay them out
+  function syncToolbars() {
+    if (toolbarWanted('text')) { if (!tools) buildTools(); tools.hidden = false; } else if (tools) { tools.hidden = true; toolsSel = null; }
+    if (toolbarWanted('shape')) { if (!stools) buildShapeTools(); stools.hidden = false; } else if (stools) stools.hidden = true;
+    if (toolbarWanted('code')) { if (!code) buildCode(); if (code.hidden) openCodePanel(); } else if (code && !code.hidden) closeCodePanel();
+    layoutTools(); layoutShapeTools();
+  }
+
   /* ---------- text editing ---------- */
   function startEdit(el, keepSelection) {
     if (!el || busy) return false;
@@ -319,42 +352,64 @@
 
   /* ---------- floating panels (movable toolbars) ---------- */
   var panelPos = {};   // panel id -> { left, top } once the viewer dragged it; cleared by double-clicking the grip
-  function makeMovable(panel, relayout) {
+  // dragSurface: an optional selector for a second drag handle (e.g. a panel's header row) — its
+  // empty space and labels move the panel, its buttons / fields keep their own behaviour
+  function makeMovable(panel, relayout, dragSurface) {
     var grip = document.createElement('span');
     grip.className = 'nbg-grip'; grip.textContent = '⋮⋮';
     grip.title = 'Drag to move this toolbar — double-click to let it follow the selection again';
     var host = panel.querySelector('.nbg-row') || panel;   // a multi-row panel keeps the grip in its first row
     host.insertBefore(grip, host.firstChild);
     var pd = null;
-    grip.addEventListener('pointerdown', function (e) {
+    function down(handle, e) {
+      if (handle !== grip && e.target.closest('button, input, select, textarea, a, .nbg-grip')) return;
+      if (e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
       var r = panel.getBoundingClientRect();
       pd = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
-      try { grip.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
-    });
-    grip.addEventListener('pointermove', function (e) {
+      try { handle.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+    }
+    function move(e) {
       if (!pd || e.pointerId !== pd.id) return;
       var r = panel.getBoundingClientRect();
       var left = Math.max(0, Math.min(e.clientX - pd.dx, window.innerWidth - r.width));
       var top = Math.max(0, Math.min(e.clientY - pd.dy, window.innerHeight - r.height));
       panelPos[panel.id] = { left: left, top: top };
       panel.style.left = left + 'px'; panel.style.top = top + 'px';
+    }
+    function up(e) { if (pd && e.pointerId === pd.id) pd = null; }
+    var handles = [grip].concat(dragSurface ? Array.prototype.slice.call(panel.querySelectorAll(dragSurface)) : []);
+    handles.forEach(function (h) {
+      h.addEventListener('pointerdown', function (e) { down(h, e); });
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', up);
+      h.addEventListener('pointercancel', up);
+      if (h !== grip) h.classList.add('nbg-dragsurface');
     });
-    grip.addEventListener('pointerup', function (e) { if (pd && e.pointerId === pd.id) pd = null; });
     grip.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); delete panelPos[panel.id]; relayout(); });
     grip.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); });
   }
-  function placePanel(panel, anchor) {
+  function placePanel(panel, anchor) {   // anchor = the selection's rect, or null for an idle toolbar (docked top-left)
     panel.style.left = '0px'; panel.style.top = '0px';
     var tr = panel.getBoundingClientRect(), pos = panelPos[panel.id], left, top;
     if (pos) {
       left = Math.max(0, Math.min(pos.left, window.innerWidth - tr.width));
       top = Math.max(0, Math.min(pos.top, window.innerHeight - tr.height));
-    } else {
+    } else if (!anchor) { left = 8; top = 8; }
+    else {
       left = Math.max(8, Math.min(anchor.left, window.innerWidth - tr.width - 8));
       // above the anchor; else below it; else just inside its top edge (keeps the frame's handles free)
       top = anchor.top - tr.height - 12;
       if (top < 8) top = anchor.bottom + 12 + tr.height <= window.innerHeight - 8 ? anchor.bottom + 12 : Math.max(8, Math.min(anchor.top + 16, window.innerHeight - tr.height - 8));
+    }
+    if (!pos && panel === stools) {   // the shape toolbar must not cover the text toolbar: slide below (or above) it
+      [tools].forEach(function (o) {
+        if (!o || o.hidden) return;
+        var r = o.getBoundingClientRect(); if (!r.width) return;
+        if (left < r.right && left + tr.width > r.left && top < r.bottom && top + tr.height > r.top) {
+          top = r.bottom + 6 + tr.height <= window.innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - tr.height - 6);
+        }
+      });
     }
     panel.style.left = left + 'px'; panel.style.top = top + 'px';
   }
@@ -388,30 +443,58 @@
     if (sel && toolsSel) { sel.removeAllRanges(); sel.addRange(toolsSel); }
   }
   function styleProp(el, prop) { return el.style.getPropertyValue(prop); }
-  function setTextStyle(prop, value) {
-    var el = editing.el;
+  function setTextStyle(prop, value, el) {
+    el = el || editing.el;
     if (value === '' || value === null) el.style.removeProperty(prop); else el.style.setProperty(prop, value);
     if (el.getAttribute('style') === '') el.removeAttribute('style');
   }
   function fontSizePx(el) { return parseFloat(getComputedStyle(el).fontSize) || 16; }
-  function setBlockFontSize(px) {
-    var el = editing.el, cs = getComputedStyle(el);
+  function setBlockFontSize(px, el) {
+    el = el || editing.el;
+    var cs = getComputedStyle(el);
     // keep the line-height proportional when the design fixed it in px
     if (!styleProp(el, 'line-height') && cs.lineHeight !== 'normal') {
       var ratio = (parseFloat(cs.lineHeight) || 0) / fontSizePx(el);
-      if (ratio > 0) setTextStyle('line-height', String(Math.round(ratio * 1000) / 1000));
+      if (ratio > 0) setTextStyle('line-height', String(Math.round(ratio * 1000) / 1000), el);
     }
-    setTextStyle('font-size', Math.max(8, Math.round(px)) + 'px');
+    setTextStyle('font-size', Math.max(8, Math.round(px)) + 'px', el);
   }
-  function toggleBlock(prop, on, off) {
-    var el = editing.el, cur = styleProp(el, prop) || getComputedStyle(el)[prop.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); })];
-    setTextStyle(prop, (cur || '').indexOf(on) >= 0 ? off : on);
+  function toggleBlock(prop, on, off, el) {
+    el = el || editing.el;
+    var cur = styleProp(el, prop) || getComputedStyle(el)[prop.replace(/-([a-z])/g, function (_, c) { return c.toUpperCase(); })];
+    setTextStyle(prop, (cur || '').indexOf(on) >= 0 ? off : on, el);
   }
-  function toggleDecoration(kind) {
-    var el = editing.el, cur = (styleProp(el, 'text-decoration') || getComputedStyle(el).textDecorationLine || '').split(/\s+/).filter(function (x) { return x && x !== 'none'; });
+  function toggleDecoration(kind, el) {
+    el = el || editing.el;
+    var cur = (styleProp(el, 'text-decoration') || getComputedStyle(el).textDecorationLine || '').split(/\s+/).filter(function (x) { return x && x !== 'none'; });
     var i = cur.indexOf(kind);
     if (i >= 0) cur.splice(i, 1); else cur.push(kind);
-    setTextStyle('text-decoration', cur.length ? cur.join(' ') : 'none');
+    setTextStyle('text-decoration', cur.length ? cur.join(' ') : 'none', el);
+  }
+  // the text toolbar on selected text blocks (no edit session): block-level, on every selected text block
+  function formatBlocks(action, value) {
+    var els = textTargets(); if (!els.length) return false;
+    var f = action === 'bigger' ? 1.1 : 1 / 1.1;
+    var n = withRecords(els, function () {
+      els.forEach(function (el) {
+        switch (action) {
+          case 'bold': toggleBlock('font-weight', '700', '400', el); break;
+          case 'italic': toggleBlock('font-style', 'italic', 'normal', el); break;
+          case 'underline': toggleDecoration('underline', el); break;
+          case 'strike': toggleDecoration('line-through', el); break;
+          case 'bigger': case 'smaller': setBlockFontSize(fontSizePx(el) * f, el); break;
+          case 'size': if (value) setBlockFontSize(parseFloat(value), el); break;
+          case 'family': setTextStyle('font-family', value || '', el); break;
+          case 'color': setTextStyle('color', value || '', el); break;
+          case 'align': setTextStyle('text-align', value || '', el); break;
+          case 'clear': { var rec = findEdit(el, 'style'); if (rec) apply(el, 'style', rec.original); break; }
+          default: break;
+        }
+      });
+    });
+    layoutTools();
+    if (n) toast('Formatting applied to ' + (els.length === 1 ? describe(els[0]) : els.length + ' text blocks') + ' — ' + changesLabel() + '.', 2500);
+    return n > 0;
   }
   // Selection-level styling: wrap exactly the selected text runs in styled spans (reusing a span
   // that already wraps just that run), so the rest of the block is untouched.
@@ -451,7 +534,7 @@
     });
   }
   function format(action, value) {
-    if (!editing) return false;
+    if (!editing) return formatBlocks(action, value);
     restoreSelection();
     var range = currentRange(), ranged = !!(range && !range.collapsed), el = editing.el;
     var f = action === 'bigger' ? 1.1 : 1 / 1.1;
@@ -511,8 +594,9 @@
     h += '<button type="button" data-f="align" data-v="left" title="Align left">⇤</button><button type="button" data-f="align" data-v="center" title="Centre">☰</button><button type="button" data-f="align" data-v="right" title="Align right">⇥</button>';
     h += '<i class="nbg-tsep"></i>';
     h += '<button type="button" data-f="clear" class="nbg-tquiet" title="Clear formatting — the selection, or the whole text back to its design">Clear</button>';
-    h += '<button type="button" data-f="done" class="nbg-tdone" title="Apply (Enter)">Done</button>';
-    tools.innerHTML = h;
+    h += '<button type="button" data-f="done" class="nbg-tdone" title="Apply (Enter) — or finish with the selected text blocks">Done</button>';
+    h += '<button type="button" data-f="close" class="nbg-tquiet nbg-tclose" title="Hide this toolbar (right-click → Toolbars shows it again)">✕</button>';
+    tools.innerHTML = '<span class="nbg-tlabel nbg-tnote"></span>' + h;
     makeMovable(tools, layoutTools);
     // keep the editable focused and its selection intact while using the buttons
     tools.addEventListener('pointerdown', function (e) { if (!e.target.closest('input, select')) e.preventDefault(); saveSelection(); });
@@ -521,7 +605,8 @@
       var b = e.target.closest('button'); if (!b) return;
       e.preventDefault();
       var f = b.getAttribute('data-f');
-      if (f === 'done') { commitEdit(); return; }
+      if (f === 'close') { setToolbarMode('text', 'off'); return; }
+      if (f === 'done') { if (editing) commitEdit(); else deselectShape(); return; }
       format(f, b.getAttribute('data-v'));
     });
     tools.querySelector('[data-f=size]').addEventListener('change', function (e) { format('size', e.target.value); restoreSelection(); });
@@ -530,29 +615,33 @@
     tools.querySelector('[data-f=family]').addEventListener('keydown', function (e) { e.stopPropagation(); });
     document.body.appendChild(tools);
   }
-  function showTools() { if (!tools) buildTools(); tools.hidden = false; layoutTools(); }
-  function hideTools() { if (tools) tools.hidden = true; toolsSel = null; }
-  function inlineUp(node, prop) {      // nearest inline value of prop from node up to the edited block
+  function showTools() { syncToolbars(); }
+  function hideTools() { toolsSel = null; syncToolbars(); }
+  function inlineUp(node, prop, root) {      // nearest inline value of prop from node up to the block
     var el = node && node.nodeType === 3 ? node.parentElement : node;
-    while (el && editing && (el === editing.el || editing.el.contains(el))) { var v = styleProp(el, prop); if (v) return v; if (el === editing.el) break; el = el.parentElement; }
+    while (el && root && (el === root || root.contains(el))) { var v = styleProp(el, prop); if (v) return v; if (el === root) break; el = el.parentElement; }
     return '';
   }
   function layoutTools() {
-    if (!tools || tools.hidden || !editing) return;
-    var el = editing.el, range = currentRange();
+    if (!tools || tools.hidden) return;
+    var els = textTargets(), el = editing ? editing.el : els[0], note = tools.querySelector('.nbg-tnote');
+    tools.classList.toggle('nbg-idle', !el);
+    note.textContent = editing ? '' : el ? (els.length > 1 ? els.length + ' text blocks' : 'Text block') : 'Select text, or double-click to edit';
+    if (!el) { placePanel(tools, null); return; }
+    var range = editing ? currentRange() : null;
     var probe = range ? (range.startContainer.nodeType === 3 ? range.startContainer.parentElement : range.startContainer) : el;
     if (!probe || !(probe === el || el.contains(probe))) probe = el;
     var cs = getComputedStyle(probe);
-    placePanel(tools, el.getBoundingClientRect());
+    placePanel(tools, editing ? el.getBoundingClientRect() : unionRect(els));
     tools.querySelector('[data-f=size]').value = Math.round(fontSizePx(probe));
-    var fam = inlineUp(probe, 'font-family'), famSel = tools.querySelector('[data-f=family]');
+    var fam = inlineUp(probe, 'font-family', el), famSel = tools.querySelector('[data-f=family]');
     famSel.value = fam; if (famSel.value !== fam) famSel.value = '';
     tools.querySelector('[data-f=bold]').classList.toggle('nbg-on', parseInt(cs.fontWeight, 10) >= 600);
     tools.querySelector('[data-f=italic]').classList.toggle('nbg-on', cs.fontStyle === 'italic');
     tools.querySelector('[data-f=underline]').classList.toggle('nbg-on', /underline/.test(cs.textDecorationLine));
     tools.querySelector('[data-f=strike]').classList.toggle('nbg-on', /line-through/.test(cs.textDecorationLine));
     Array.prototype.forEach.call(tools.querySelectorAll('[data-f=align]'), function (b) { b.classList.toggle('nbg-on', styleProp(el, 'text-align') === b.getAttribute('data-v')); });
-    var col = normColor(inlineUp(probe, 'color'));
+    var col = normColor(inlineUp(probe, 'color', el));
     Array.prototype.forEach.call(tools.querySelectorAll('[data-f=color]'), function (b) { b.classList.toggle('nbg-on', col === normColor(b.getAttribute('data-v'))); });
   }
   document.addEventListener('selectionchange', function () { if (editing && tools && !tools.hidden) layoutTools(); });
@@ -1160,6 +1249,7 @@
     h += '<i class="nbg-tsep"></i>';
     h += '<button type="button" data-s="reset" class="nbg-tquiet" title="Restore the selected shapes’ original size, position and style">Reset</button>';
     h += '<button type="button" data-s="done" class="nbg-tdone" title="Finish (Esc)">Done</button>';
+    h += '<button type="button" data-s="close" class="nbg-tquiet nbg-tclose" title="Hide this toolbar (right-click → Toolbars shows it again)">✕</button>';
     // second row: arrange
     h += '</div><div class="nbg-row">';
     h += '<span class="nbg-tlabel" data-count>1 shape</span>';
@@ -1182,9 +1272,11 @@
     makeMovable(stools, layoutShapeTools);
     stools.addEventListener('click', function (e) {
       e.stopPropagation();
-      var b = e.target.closest('button'); if (!b || !shape) return;
+      var b = e.target.closest('button'); if (!b) return;
       e.preventDefault();
       var a = b.getAttribute('data-s'), ar = b.getAttribute('data-a');
+      if (a === 'close') { setToolbarMode('shape', 'off'); return; }
+      if (!shape) return;
       if (ar) arrange(ar, b.getAttribute('data-v'));
       else if (a === 'done') deselectShape();
       else if (a === 'reset') resetSelection();
@@ -1222,10 +1314,12 @@
       return '<option value="' + i + '"' + (x === el ? ' selected' : '') + '>' + new Array(depth + 1).join('› ') + esc(tag + describe(x)) + '</option>';
     }).join('');
   }
-  function showShapeTools() { if (!stools) buildShapeTools(); stools.hidden = false; layoutShapeTools(); }
-  function hideShapeTools() { if (stools) stools.hidden = true; }
+  function showShapeTools() { syncToolbars(); }
+  function hideShapeTools() { syncToolbars(); }
   function layoutShapeTools() {
-    if (!stools || stools.hidden || !shape) return;
+    if (!stools || stools.hidden) return;
+    stools.classList.toggle('nbg-idle', !shape);
+    if (!shape) { stools.querySelector('[data-count]').textContent = 'No shape selected'; var sl0 = stools.querySelector('[data-a=stack]'); sl0.hidden = true; placePanel(stools, null); return; }
     var el = shape.el, g = geom(el), st = el.style, multi = sel.length > 1;
     placePanel(stools, unionRect(sel));
     var set = function (k, v) { var i = stools.querySelector('[data-s=' + k + ']'); if (document.activeElement !== i) i.value = v; };
@@ -1270,8 +1364,9 @@
   }
   function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function isEdited(el) { return !!(findEdit(el, 'html') || findEdit(el, 'style') || findEdit(el, 'group') || findEdit(el, 'attrs')); }
-  function codeSlide() {
+  function codeSlide() {   // the slide on screen wins: a followed element whose slide left the screen is dropped
     var el = codeEl && codeEl.isConnected ? codeEl : (shape ? shape.el : editing ? editing.el : null);
+    if (el && slideOffscreen(el)) { if (!shape && !editing) codeEl = null; el = null; }
     var s = el ? slideOf(el) : null;
     return s || slideAtPoint(window.innerWidth / 2, window.innerHeight / 2);
   }
@@ -1468,7 +1563,7 @@
   }
   function buildCode() {
     code = document.createElement('div');
-    code.id = 'nbg-code'; code.className = 'nbg-panel nbg-code';
+    code.id = 'nbg-code'; code.className = 'nbg-panel nbg-code'; code.hidden = true;   // shown (and placed) by syncToolbars
     code.setAttribute('role', 'dialog'); code.setAttribute('aria-label', 'Structure and HTML of the slide');
     code.innerHTML =
       '<div class="nbg-row nbg-ch"><span class="nbg-ct">Slide</span>' +
@@ -1488,7 +1583,7 @@
       '<button type="button" data-c="copy" class="nbg-tquiet" title="Copy the source">Copy</button><span class="nbg-cs"></span></div></div>';
     codeTree = code.querySelector('.nbg-ctree'); codeOut = code.querySelector('.nbg-olist'); codeRaw = code.querySelector('.nbg-raw'); codeStatus = code.querySelector('.nbg-cs');
     code.querySelector('.nbg-oq').addEventListener('input', function (e) { outFilter = e.target.value; renderOutline(); });
-    makeMovable(code, placeCode);
+    makeMovable(code, placeCode, '.nbg-ch');   // the header's empty space and its "Slide N" title drag the panel too
     code.addEventListener('click', function (e) {
       e.stopPropagation();
       var b = e.target.closest('button');
@@ -1550,9 +1645,17 @@
     if (!code) buildCode();
     if (el && el.nodeType === 1 && !el.closest(OURS)) codeEl = el;
     else if (!codeEl || !codeEl.isConnected) codeEl = shape ? shape.el : editing ? editing.el : null;
+    ui.code = 'on'; uiSave(); syncToolbars();
+    if (tab) setTab(tab);
+    // "Show structure / HTML" on an element selects it; opening the panel on its own selects nothing
+    if (el && el === codeEl && !shape && !editing && codeEl.isConnected && !codeEl.classList.contains('slide')) selectSolo(codeEl, true);
+    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements; Code: the selected element’s source, editable. The selection is highlighted on the slide and here.', 5000);
+    return true;
+  }
+  function openCodePanel() {
     code.hidden = false;
     placeCode();
-    if (tab) setTab(tab); else codeRefresh();
+    codeRefresh();
     if (!codeObserver) {
       // deck-driven changes (slide switches, animations) and edits made elsewhere keep the tree current
       codeObserver = new MutationObserver(function (list) {
@@ -1560,14 +1663,11 @@
       });
     }
     codeObserver.observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true, attributeFilter: ['class', 'style', 'hidden', 'data-nbg-group'] });
-    if (!shape && !editing && codeEl && codeEl.isConnected && !codeEl.classList.contains('slide')) selectSolo(codeEl, true);
-    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements; Code: the selected element’s source, editable. The selection is highlighted on the slide and here.', 5000);
-    return true;
   }
+  function closeCodePanel() { code.hidden = true; hoverEl(null); if (codeObserver) codeObserver.disconnect(); }
   function closeCode() {
     if (!code || code.hidden) return false;
-    code.hidden = true; hoverEl(null);
-    if (codeObserver) codeObserver.disconnect();
+    setToolbarMode('code', 'off');
     return true;
   }
   function codeIsOpen() { return !!(code && !code.hidden); }
@@ -1601,6 +1701,28 @@
     toast(mine.length ? 'Slide ' + no + ': ' + mine.length + ' change' + (mine.length === 1 ? '' : 's') + ' discarded' + (edits.length ? ' — ' + changesLabel() + ' left on other slides.' : '.') : 'No changes on slide ' + no + '.', 3000);
     return mine.length;
   }
+  /* the deck's own navigation: a selection that left the screen is dropped and the toolbars adapt */
+  var deckRaf = 0, lastSlide = null;
+  function slideOffscreen(el) {
+    var sl = el && slideOf(el); if (!sl) return false;
+    var cs = getComputedStyle(sl), r = sl.getBoundingClientRect();
+    return !sl.offsetWidth || cs.display === 'none' || cs.visibility === 'hidden' || parseFloat(cs.opacity) === 0 || r.right <= 0 || r.bottom <= 0 || r.left >= window.innerWidth || r.top >= window.innerHeight;
+  }
+  function onDeckChange() {
+    if (busy) return;
+    if (editing && slideOffscreen(editing.el)) commitEdit();
+    if (shape && slideOffscreen(shape.el)) { deselectShape(); toast('The slide changed — selection cleared.', 1500); }
+    var vis = slideAtPoint(window.innerWidth / 2, window.innerHeight / 2);
+    if (vis !== lastSlide) { lastSlide = vis; syncToolbars(); codeRefresh(); }
+  }
+  function scheduleDeckChange() { cancelAnimationFrame(deckRaf); deckRaf = requestAnimationFrame(onDeckChange); }
+  new MutationObserver(function (list) {
+    for (var i = 0; i < list.length; i++) { var t = list[i].target; if (t.nodeType === 1 && !t.closest(OURS)) { scheduleDeckChange(); return; } }
+  }).observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+  // decks that navigate by scrolling, by the URL hash, or with a transition on a wrapper
+  ['hashchange', 'popstate', 'resize'].forEach(function (t) { window.addEventListener(t, scheduleDeckChange); });
+  window.addEventListener('scroll', scheduleDeckChange, true);
+  document.addEventListener('transitionend', function (e) { if (e.target && e.target.nodeType === 1 && !e.target.closest(OURS)) scheduleDeckChange(); }, true);
   function buildEditedHtml() {
     if (editing) commitEdit();
     var doc = new DOMParser().parseFromString(PRISTINE, 'text/html');
@@ -1667,7 +1789,7 @@
   var style = document.createElement('style');
   style.id = 'nbg-deck-menu-style';
   style.textContent =
-    '#nbg-deck-menu{position:fixed;z-index:2147483647;min-width:280px;max-width:380px;padding:6px;background:#fff;color:' + INK + ';' +
+    '#nbg-deck-menu{position:fixed;z-index:2147483647;min-width:280px;max-width:380px;max-height:calc(100vh - 16px);overflow-y:auto;padding:6px;background:#fff;color:' + INK + ';' +
     'border:1px solid rgba(0,56,65,.14);border-radius:12px;box-shadow:0 12px 32px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);' +
     'font:14px/1.35 ' + FONT + ';user-select:none;-webkit-user-select:none}' +
     '#nbg-deck-menu .nbg-head{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;font-size:11px;letter-spacing:.12em;' +
@@ -1704,6 +1826,7 @@
     '#nbg-hover{position:fixed;z-index:2147483645;box-sizing:border-box;outline:2px dashed ' + CYAN + ';outline-offset:1px;background:rgba(0,173,191,.06);pointer-events:none}' +
     '.nbg-panel.nbg-code{flex-direction:column;align-items:stretch;gap:0;padding:0;width:460px;height:min(72vh,680px);min-width:300px;min-height:180px;resize:both;overflow:hidden;font-size:12px}' +
     '.nbg-code .nbg-ch{padding:4px 6px;border-bottom:1px solid rgba(0,56,65,.12);flex-wrap:nowrap}.nbg-code .nbg-ct{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:' + ACCENT + ';margin:0 6px 0 2px;white-space:nowrap}' +
+    '.nbg-code .nbg-dragsurface{cursor:move}.nbg-code .nbg-dragsurface button,.nbg-code .nbg-dragsurface input{cursor:pointer}' +
     '.nbg-code .nbg-cfill{flex:1}.nbg-code .nbg-cb{flex:1;min-height:0;overflow:auto;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}' +
     '.nbg-code .nbg-cb[hidden]{display:none!important}.nbg-code .nbg-ctree{padding:4px 0;outline:none}' +
     '.nbg-code .nbg-tr{white-space:nowrap;padding:1px 8px 1px 4px;cursor:default;color:' + INK + '}.nbg-code .nbg-tr:hover{background:' + CREAM + '}' +
@@ -1738,6 +1861,8 @@
     '.nbg-panel .nbg-row{display:flex;align-items:center;gap:2px;flex-wrap:wrap}' +
     '.nbg-panel .nbg-tlabel{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + ';margin:0 4px 0 2px;white-space:nowrap}' +
     '.nbg-panel button.nbg-off{opacity:.35}' +
+    '.nbg-panel.nbg-idle button:not(.nbg-tclose),.nbg-panel.nbg-idle input,.nbg-panel.nbg-idle select{opacity:.35;pointer-events:none}' +
+    '.nbg-panel .nbg-tclose{margin-left:2px;min-width:24px}.nbg-panel .nbg-tnote:empty{display:none}' +
     '.nbg-panel button svg{display:block;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}' +
     '.nbg-panel button svg .nbg-fill{fill:currentColor;stroke:none}' +
     '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-sel-marks,#nbg-marquee,#nbg-hover,.nbg-panel{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
@@ -1768,6 +1893,12 @@
         h += item('pick', (el === menuShape ? '● ' : '○ ') + describe(el), rel + (i === menuStack.length - 1 ? ' · outermost' : '') + ' — click selects it alone, Shift+click adds it', 'nbg-pick' + (el === menuShape ? ' nbg-pick-on' : ''));
       });
     }
+    h += '<div class="nbg-sub">Toolbars</div>';
+    ['text', 'shape', 'code'].forEach(function (k) {
+      var on = toolbarVisible(k), mode = ui[k];
+      h += item('tb-' + k, (on ? '☑ ' : '☐ ') + TOOLBAR_NAMES[k], on ? (mode === 'on' ? 'Shown and pinned — follows the selection. Click to hide it.' : 'Shown with the current selection. Click to hide it (it stays hidden until you show it again).') : (mode === 'off' ? 'Hidden by you. Click to show it and keep it visible.' : k === 'code' ? 'Opens on request (Show structure / Show HTML). Click to show it and keep it visible.' : 'Appears with the selection. Click to show it now and keep it visible.'), 'nbg-pick' + (on ? ' nbg-pick-on' : ''));
+    });
+    if (ui.text !== 'auto' || ui.shape !== 'auto') h += item('tb-auto', 'Automatic toolbars', 'Show the text and shape toolbars with the selection again (the default).', 'nbg-quiet');
     h += item('outline', 'Show structure', 'The slide’s shapes as an outline — tick boxes to select several, click a name to select one; the selection is highlighted here. Tabs for the HTML tree and the editable source.', 'nbg-quiet');
     h += item('code', 'Show HTML', (menuShape || menuTarget ? describe(menuShape || menuTarget) + ' in a tree of the slide' : 'A tree of the slide') + ' — click an element there to select it here, and edit its source in the Code tab.', 'nbg-quiet');
     h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
@@ -1808,6 +1939,13 @@
       else if (action === 'discardslide') { var sl = menuSlide; closeMenu(); discardSlideEdits(sl); }
       else if (action === 'code') { var ce = s || t || menuSlide; closeMenu(); openCode(ce, 'tree'); }
       else if (action === 'outline') { var oe = s || t || menuSlide; closeMenu(); openCode(oe, 'outline'); }
+      else if (/^tb-(text|shape|code)$/.test(action)) {
+        var k = action.slice(3), tbEl = s || t || menuSlide; closeMenu();
+        if (toolbarVisible(k)) setToolbarMode(k, 'off');
+        else if (k === 'code') openCode(tbEl);
+        else setToolbarMode(k, 'on');
+      }
+      else if (action === 'tb-auto') { closeMenu(); ui.text = 'auto'; ui.shape = 'auto'; uiSave(); syncToolbars(); toast('Toolbars appear with the selection again.', 2000); }
       else closeMenu();
     });
     menu.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -1928,6 +2066,7 @@
         else if (mod2 && (e.code === 'BracketLeft' || e.key === '[' || e.key === '{')) { e.preventDefault(); reorder(e.shiftKey ? 'back' : 'backward'); }
         else if (mod2 && e.shiftKey && (e.code === 'KeyH' || /^h$/i.test(e.key))) { e.preventDefault(); if (codeIsOpen()) closeCode(); else openCode(shape.el); }
         else if (mod2 && e.shiftKey && (e.code === 'KeyO' || /^o$/i.test(e.key))) { e.preventDefault(); if (codeIsOpen() && codeTab === 'outline') closeCode(); else openCode(shape.el, 'outline'); }
+        else if (mod2 && !e.shiftKey && /^[biu]$/i.test(e.key) && textTargets().length) { e.preventDefault(); formatBlocks({ b: 'bold', i: 'italic', u: 'underline' }[e.key.toLowerCase()]); }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); nudge(-step, 0, e.altKey); }
         else if (e.key === 'ArrowRight') { e.preventDefault(); nudge(step, 0, e.altKey); }
         else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(0, -step, e.altKey); }
@@ -1951,6 +2090,7 @@
   window.addEventListener('beforeunload', function () { if (editing) commitEdit(); });
 
   loadStored();
+  syncToolbars();   // pinned toolbars (and a pinned structure panel) come back on load
 
   window.nbgDeck = {
     version: VERSION,
@@ -1968,6 +2108,7 @@
       align: alignSelection, distribute: distributeSelection, order: reorder, group: groupSelection, ungroup: ungroupSelection,
       groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes,
     },
+    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES },
     code: {
       open: openCode, close: closeCode, isOpen: codeIsOpen, show: function (el) { return openCode(el, 'code'); }, tab: setTab, refresh: codeRefresh,
       target: function () { return codeEl; }, source: function () { return codeRaw ? codeRaw.value : ''; }, filter: function (q) { outFilter = q || ''; var i = code && code.querySelector('.nbg-oq'); if (i) i.value = outFilter; renderOutline(); },

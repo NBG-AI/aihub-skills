@@ -252,8 +252,35 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
     value }`, so it persists, lands in the saved copy and is removed by Discard); selecting any
     member selects the whole group (`expandGroups`), grouping a selection that contains groups
     merges them; Ctrl/Cmd+click or `solo()` picks one member.
+- **Toolbar modes**: `ui = { text, shape, code }`, each `'auto'` (appears with the selection),
+  `'on'` (pinned) or `'off'` (closed), persisted in `localStorage` under `nbg-deck-ui:<pathname>`.
+  `syncToolbars()` is the single place that shows or hides the three panels (`toolbarWanted`:
+  text = editing or a selected text block, shape = a selection, code = on request) and is called
+  from `startEdit` / `endEdit` / `setSelection` / `deselectShape` / `openCode` / `closeCode`;
+  the old `show*` / `hide*` helpers delegate to it. Each toolbar has a ✕ (`setToolbarMode(k,
+  'off')`); pinned toolbars render an idle state (`.nbg-idle`: controls dimmed and inert, a note
+  such as "No shape selected" / "Select text, or double-click to edit", docked top-left by
+  `placePanel(panel, null)`); the shape toolbar slides below the text toolbar when both are
+  shown. The menu's *Toolbars* section (`tb-text` / `tb-shape` / `tb-code`, `tb-auto`) ticks
+  what is visible: click = hide (`'off'`) or show-and-pin (`'on'`; the structure panel through
+  `openCode`). API: `window.nbgDeck.toolbars = { mode, set, visible, sync, names }`.
+- **Toolbars follow the selection**: `layoutTools()` / `layoutShapeTools()` re-read the selection
+  on every sync. Without an edit session the text toolbar targets `textTargets()` (every selected
+  element with its own text): `format()` routes to `formatBlocks()`, which applies the block-level
+  variants (`toggleBlock`, `toggleDecoration`, `setBlockFontSize`, `setTextStyle` — all now take
+  the element) to each target inside `withRecords()`; Clear restores the record's original. A
+  document-level `MutationObserver` on class / style / hidden (our own elements ignored) drives
+  `onDeckChange()`: an edit or selection whose slide is off-screen (`slideOffscreen`: display
+  none, hidden, opacity 0, zero size, or outside the viewport) is committed / dropped, and when
+  the visible slide changes the toolbars and the structure panel are re-synced; scroll, hashchange,
+  popstate, resize and transitionend schedule the same check for decks that navigate without an
+  attribute change. `codeSlide()` lets the slide on screen win over a followed element whose
+  slide left the screen, so the Outline / Tree always show the current slide.
 - **Structure / HTML panel** (`#nbg-code`, menu *Show structure* / *Show HTML*, toolbar `</>`,
-  Ctrl/Cmd+Shift+O / H; movable by its grip, resizable, docked right by default). *Outline*
+  Ctrl/Cmd+Shift+O / H; movable by its grip and by its header row — `makeMovable(panel,
+  relayout, '.nbg-ch')` adds the header's empty space and the "Slide N" title as a second drag
+  surface while buttons, fields and the tabs keep their own behaviour; resizable; docked right by
+  default). *Outline*
   (default tab): `renderOutline()` walks `childShapes()` from the slide (shape candidates only,
   backdrops included and badged), one `.nbg-or` row per shape with a checkbox (`toggleSelection`),
   a kind icon (`shapeKind`: img / text / box), `shapeLabel()` (text preview, image alt, or
