@@ -1,0 +1,9 @@
+# uv-managed engine environment (created by `uv sync`, never committed)
+engine/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# generated decks and previews
+*.pptx
+*.pdf
+previews/

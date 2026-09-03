@@ -1,0 +1,20 @@
+[project]
+name = "nbg-design-pptx-engine"
+version = "0.1.0"
+description = "Native PPTX renderer for the NBG Presentation Design System (nbg-design templates)"
+requires-python = ">=3.11"
+dependencies = [
+    "lxml>=6.1.3",
+    "pillow>=12.3.0",
+    "python-pptx>=1.0.2",
+    "pyyaml>=6.0.3",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "defusedxml>=0.7.1",
+    "pytest>=8",
+]

@@ -1,0 +1,19 @@
+{
+  "name": "nbg-design-pptx",
+  "version": "1.1.0",
+  "author": {
+    "name": "Giorgos Marinos"
+  },
+  "license": "MIT",
+  "keywords": [
+    "nbg",
+    "design",
+    "pptx",
+    "powerpoint",
+    "presentation",
+    "slides",
+    "deck",
+    "brand"
+  ],
+  "description": "Use when creating National Bank of Greece (NBG) presentations as editable PowerPoint (.pptx). Default style is the internal team briefing look: pure white slides, one teal accent (#007B85) for highlights, lines and details, grey ink hierarchy, status pills, callout bands, hairline tables and two-panel layouts, lean by design (5-8 slides). The NBG Presentation Design System look of the nbg-design plugin (dark hero and cream covers, dividers, numbered columns, hero stats, chart, table and back-cover companions) stays available as style design-system. Everything is rendered as native, editable PowerPoint objects, never HTML and never screenshots. Triggers include NBG pptx, NBG PowerPoint, internal briefing deck, team briefing, release outlook deck, status deck, lean NBG deck, NBG design-system deck, convert the nbg-design HTML look to PowerPoint."
+}
