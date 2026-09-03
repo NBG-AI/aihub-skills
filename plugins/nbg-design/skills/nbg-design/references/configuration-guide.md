@@ -38,7 +38,7 @@ This YAML file is a Pi `@file` context bundle. It is not Pi native settings, and
 | Target audience | Yes per deck | Provide in the Pi prompt or answer when asked. | None |
 | Slide count or depth | Yes per deck | Provide in the Pi prompt or answer when asked. | None |
 | Preferred language | Optional | Provide in the Pi prompt (`en`, `gr`, or `bi`). | `en` |
-| Output format / delivery target | Optional | Provide in the Pi prompt: `html`, `pdf` (exported from the HTML deck by `scripts/export-pdf.mjs`), or `pptx`. | `html` |
+| Output format / delivery target | Optional | Provide in the Pi prompt: `html`, `pdf` (exported from the HTML deck by `scripts/export-pdf.mjs`). PowerPoint is out of scope. | `html` |
 | Browser executable path | Required only for automated screenshot capture and PDF export | `scripts/screenshot-deck.mjs` and `scripts/export-pdf.mjs` auto-detect Chrome/Chromium/Edge at the usual macOS/Linux locations and on `PATH`; override with `--browser <path>` or the `NBG_BROWSER` / `CHROME_BIN` environment variables. No committed fallback path. | None (auto-detect) |
 
 ## Deterministic Setup Process

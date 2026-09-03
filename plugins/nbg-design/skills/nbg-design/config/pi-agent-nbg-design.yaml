@@ -52,7 +52,7 @@ presentation_workflow:
     - "Ask for missing presentation-specific inputs instead of substituting fallback values, except for the explicit defaults defined in this file."
     - "If no deck language is specified, assume English (`en`)."
     - "If no final output format is specified, assume HTML (`html`)."
-    - "Accepted output formats are html (default), pdf, and pptx. A PDF is always exported from the finished, verified HTML deck with `node <skill-root>/scripts/export-pdf.mjs <deck>.html` — one page per slide at the slide's own box (the 1920x1080 artboard = 20 x 11.25 in, zero margins, backgrounds forced, vector text). Never author a PDF separately, never re-lay the deck out for paper, never produce it via window.print at Letter/A4, browser Save-as-PDF with headers/footers, Office round-trips, or stitched screenshots."
+    - "Accepted output formats are html (default) and pdf; PowerPoint (.pptx) is out of scope for this skill — when asked for it, say so and deliver the HTML deck and its PDF. A PDF is always exported from the finished, verified HTML deck with `node <skill-root>/scripts/export-pdf.mjs <deck>.html` — one page per slide at the slide's own box (the 1920x1080 artboard = 20 x 11.25 in, zero margins, backgrounds forced, vector text). Never author a PDF separately, never re-lay the deck out for paper, never produce it via window.print at Letter/A4, browser Save-as-PDF with headers/footers, Office round-trips, or stitched screenshots."
     - "The HTML gate (embed-assets.mjs, verify-deck.mjs --strict, visual check) is a precondition for the PDF export: the PDF inherits every defect of the HTML. Do not export a deck that fails verify-deck.mjs --strict."
     - "export-pdf.mjs verifies that the PDF page count equals the slide count and that every slide box equals the page box, and exits non-zero otherwise. Treat any such failure as a defect in the deck's slide sizing/overflow: fix the HTML and re-export; do not add print stylesheets, resize slides, or change copy to make it print."
     - "After the export, rasterise a few pages (e.g. `pdftoppm -r 72 -png <deck>.pdf <prefix>` when poppler is present, otherwise open the PDF) and read them next to the browser screenshots: cover, one divider, one dense content slide, last slide at minimum. Deliver the PDF together with its source HTML unless the user wants only the PDF, and report the exporter's slides/pages/page-box line."
@@ -60,16 +60,13 @@ presentation_workflow:
     - "Every delivered HTML deck carries the in-deck right-click menu: run `node <skill-root>/scripts/add-deck-menu.mjs <deck>.html` after embed-assets.mjs and before verify-deck.mjs --strict (which requires it unless --no-deck-menu is passed because the user declined the menu). The menu offers Edit text (in-place editing of any text on a slide, also by double-click; Enter applies, Esc cancels; a toolbar gives bold/italic/underline/strike, font size, family, NBG palette colour, alignment), Resize / move shape (selection frame with handles on any card, photo panel, image, decorative block or text block; drag to resize or move, arrows nudge; Reset shape restores it), Export to PDF (same print-layout code as export-pdf.mjs; viewer picks Save as PDF; 1920x1080 page, zero margins and backgrounds preset), Save edited copy (downloads the deck with the edits applied) and Discard edits. Edits persist in the browser until saved. Tell the user in one line: double-click text to edit it; right-click for Resize / move shape, Export to PDF and Save edited copy."
     - "The in-deck menu edits text, text formatting (fonts limited to the design system's stacks, colours to the NBG palette), geometry and shape styling (fill, border, radius, opacity, shadow from the same palette) only; images, new elements and structure remain the skill's job — regenerate the deck for those. Shape changes do not re-flow neighbours, so the skill's overlap rules still apply to what the viewer produces. The CLI exporter prints the file on disk, not unsaved in-browser edits: to deliver a PDF of an edited deck, export the saved -edited.html copy."
     - "For HTML presentation output, preserve a 16:9 NBG slide composition while fitting the complete slide inside the browser viewport."
-    - "Delivered HTML must be fully self-contained: embed every image (NBG logo AND photography) as a base64 data URI by pasting the entire contents of the matching NBG-Design/assets/<asset>.datauri.txt file as the src. NEVER reference an image by a file:// URL, an absolute path, or a relative path in delivered HTML — a file:// path into the plugin cache (e.g. file:///home/<user>/.claude/plugins/.../logo-knockout.png) breaks on every other machine and is the most common cause of a missing logo. Never substitute the logo with text, initials, a colored box, or a CSS/SVG re-creation. Choose the logo variant by background (primary on light, knockout on dark, small for footers). For PPTX, insert the <asset>.png|jpeg as a picture object. Before delivery, confirm every img/background-image value starts with data:image/ and there are zero file://, absolute, or relative image paths."
+    - "Delivered HTML must be fully self-contained: embed every image (NBG logo AND photography) as a base64 data URI by pasting the entire contents of the matching NBG-Design/assets/<asset>.datauri.txt file as the src. NEVER reference an image by a file:// URL, an absolute path, or a relative path in delivered HTML — a file:// path into the plugin cache (e.g. file:///home/<user>/.claude/plugins/.../logo-knockout.png) breaks on every other machine and is the most common cause of a missing logo. Never substitute the logo with text, initials, a colored box, or a CSS/SVG re-creation. Choose the logo variant by background (primary on light, knockout on dark, small for footers). Before delivery, confirm every img/background-image value starts with data:image/ and there are zero file://, absolute, or relative image paths."
     - "Do not hand-paste large base64 data URIs (the step that fails in headless/SSH/Linux runs). Author the deck with image placeholder tokens ({{LOGO_PRIMARY}}, {{LOGO_KNOCKOUT}}, {{LOGO_SMALL}}, {{PHOTO_FIELDS}}, {{PHOTO_HEART}}, {{PHOTO_PARTHENON}}, {{PHOTO_SKATE}}, {{PHOTO_STREET}}), define each token once via a reusable CSS background-image class, then embed deterministically with `node <skill-root>/scripts/embed-assets.mjs <deck>.html`. The script resolves bundled assets relative to itself, so it works from any cwd and on any host."
     - "Run the browser-free gate `node <skill-root>/scripts/verify-deck.mjs <deck>.html --strict` before delivery. It works without a display (headless/SSH safe) and fails on unresolved tokens, non-embedded image paths, missing assets, photo-less/too-small decks, or bare NBG/NPG text-logo substitutes. Never deliver a deck that fails it."
     - "If the skill was moved to another machine, confirm the whole skill folder travelled including NBG-Design/assets/ (the *.datauri.txt files). A missing assets directory reported by embed-assets.mjs is the root cause of missing logos/photography."
     - "Before delivering generated HTML slides, render screenshots and visually inspect them for clipping, overflow, unintended element overlap, unreadable text, and NBG design alignment."
     - "When a browser is available, capture those screenshots with `node <skill-root>/scripts/screenshot-deck.mjs <deck>.html` (auto-detects Chrome/Chromium/Edge, navigates every slide, writes PNGs at 1366x768 and 1440x900), then read and inspect each PNG. If it exits with code 3 (no browser, typical headless host), rely on verify-deck.mjs --strict instead."
     - "For HTML presentation layouts, reserve non-overlapping zones for title/header, body content, card grids/rows, bottom callouts, footer, logo, and page-number elements; revise or split slides whenever content cannot fit safely."
-    - "When asked to convert an HTML page to a PowerPoint presentation slide, recreate the slide with native editable PowerPoint shapes, text boxes, fonts, fills, borders, charts, and layout objects; do not capture the HTML content and use it as a slide image."
-    - "For HTML-to-PowerPoint conversion, keep continuous text blocks as continuous editable PowerPoint text blocks with natural wrapping; do not split paragraphs, headlines, or copy blocks into separate text boxes merely to mimic rendered line breaks."
-    - "For HTML-to-PowerPoint conversion, inspect the generated PowerPoint rendering against the rendered HTML reference and revise until the visual match is as close to 100% as technically possible while preserving native editability."
     - "Keep newsletter/email prototypes out of scope unless the user explicitly asks to reuse them."
   required_user_inputs_for_each_deck:
     - "presentation_topic"
@@ -77,7 +74,7 @@ presentation_workflow:
     - "desired_slide_count_or_depth"
   optional_user_inputs_with_defaults:
     - "preferred_language: one of en, gr, bi; default en"
-    - "final_output_format_or_delivery_target: one of html, pdf, pptx; default html (pdf is exported from the HTML deck by scripts/export-pdf.mjs)"
+    - "final_output_format_or_delivery_target: one of html, pdf; default html (pdf is exported from the HTML deck by scripts/export-pdf.mjs)"
 
 source_material:
   refined_request: "references/refined-request-user-level-nbg-design-skill.md"
@@ -88,7 +85,6 @@ nbg_design_system:
   documentation_host: "NBG-Design/NBG Design System.html"
   slide_templates: "NBG-Design/slide-templates.jsx"
   tweaks_panel: "NBG-Design/tweaks-panel.jsx"
-  source_master_deck: "NBG-Design/uploads/Powerpoint - Version 1.0_EN.pptx"
   design_summary:
     brand: "National Bank of Greece"
     system_name: "NBG Presentation Design System"
@@ -195,40 +191,11 @@ presentation_generation_rules:
         - "Do not repeat the `agentic-engineering-nbg-executive-presentation.html` slide 2 pattern where a board-level implication card visually overlaps the bottom three-card row."
         - "Do not repeat the `agentic-engineering-nbg-executive-presentation.html` slide 3 pattern where the top row of cards overlaps lower question cards and the dark leadership card crowds the lower `New question` card."
       required_authoring_checks:
-        - "For every slide, identify the bounding regions for header/title, each card row/grid, each callout, decorative shapes that approach content, footer/logo, and page number before finalizing CSS or PowerPoint coordinates."
+        - "For every slide, identify the bounding regions for header/title, each card row/grid, each callout, decorative shapes that approach content, footer/logo, and page number before finalizing CSS coordinates."
         - "Confirm those regions have positive separation on the 1920x1080 artboard; card rows and bottom callouts must not intrude into each other's vertical or horizontal space."
         - "Decorative shapes may sit behind or near content only when they do not reduce readability, obscure text, or make card boundaries ambiguous."
         - "When using absolute positioning, compute or visually confirm top/bottom coordinates and heights for each row rather than relying on z-index or source order."
         - "If the safe zones cannot be preserved, revise the content model instead of squeezing elements together."
-  html_to_powerpoint_conversion:
-    required_when: "The user asks to convert an HTML page, HTML slide, or HTML presentation page into a PowerPoint slide/deck."
-    primary_policy: "native_recreation_not_screenshot_capture"
-    source_reference_policy:
-      - "Use the rendered HTML page as the authoritative visual reference for layout, colors, text hierarchy, spacing, and proportions."
-      - "Inspect the HTML source to extract exact content, colors, dimensions, fonts, assets, and intended line breaks."
-      - "Do not modify the source HTML unless the user separately approves a source correction."
-    native_recreation_requirements:
-      - "Create PowerPoint slides from editable native objects: shapes, text boxes, fonts, fills, borders, rounded rectangles, lines, charts, icons, and layout objects as applicable."
-      - "Do not place a full-slide screenshot, rendered HTML capture, or large rasterized content region into the PowerPoint as the slide content."
-      - "Do not use a screenshot as a background layer to simulate fidelity."
-      - "Use image assets only when they are discrete source/design assets, such as a logo or intentionally photographic content; never use an image to flatten text or major HTML content regions."
-      - "Keep the PowerPoint self-contained so it opens normally without requiring the HTML file to render slide content."
-      - "Match the HTML artboard aspect ratio and dimensions, normally NBG 16:9 / 1920x1080 mapped to PowerPoint widescreen."
-    continuous_text_policy:
-      - "Preserve paragraphs, headlines, labels, recommendations, and other continuous copy blocks as continuous editable PowerPoint text blocks."
-      - "Rely on PowerPoint text wrapping inside appropriately sized text boxes rather than splitting text into separate boxes for each visual line."
-      - "Preserve explicit/source-intended line breaks only when they exist semantically in the HTML, such as `<br>` title breaks or deliberately separated label lines."
-      - "After generation, inspect the slide XML or object model when practical to confirm continuous text blocks were not decomposed into per-line objects."
-    visual_match_policy:
-      target: "Aim for a human-visible 100% match to the rendered HTML representation, subject only to unavoidable browser-versus-PowerPoint rendering differences."
-      required_checks:
-        - "Render or open the generated PowerPoint slide and visually compare it against the rendered HTML reference."
-        - "Check placement, sizing, colors, typography hierarchy, spacing, card/border geometry, chart proportions, logo placement, and footer/header alignment."
-        - "Check that no text is clipped, missing, unreadable, overlapped, or unintentionally fragmented."
-        - "Revise and re-inspect until obvious visual mismatches are corrected or explicitly documented as technical limitations requiring user approval."
-      verification_artifacts:
-        - "Save rendered HTML reference screenshots and PowerPoint render/thumbnail screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, when screenshot tooling is available."
-        - "Document package/object verification and visual inspection evidence under `docs/reference/` for non-trivial conversions."
   pdf_export:
     required_when: "The user asks for a PDF, a PDF version, a print version, or to send/share the deck as PDF."
     primary_policy: "print_the_verified_html_deck_with_the_browser_engine_aesthetics_frozen"
@@ -251,7 +218,7 @@ presentation_generation_rules:
     forbidden:
       - "window.print() / browser Save-as-PDF at Letter or A4, with headers, footers or margins."
       - "Print stylesheets, slide resizing, font or copy changes added only to make the deck print."
-      - "PowerPoint/Word round-trips, screenshot stitching, or any raster-only PDF as the deliverable."
+      - "Office-suite round-trips, screenshot stitching, or any raster-only PDF as the deliverable."
       - "Delivering a PDF from a deck that fails verify-deck.mjs --strict."
     no_browser_policy: "Exit code 3 = no browser on this host. Deliver the verified HTML, say the PDF could not be produced here, and give the one-line command to run on a host with Chrome/Chromium/Edge."
     delivery: "PDF plus its source HTML (unless the user wants only the PDF); report the exporter's slides / pages / page-box line and the pages read."
@@ -279,7 +246,6 @@ presentation_generation_rules:
     required_for_output_formats:
       - "html"
       - "pdf"
-      - "pptx_converted_from_html"
     screenshot_directory: "test_scripts/screenshots/ in the active working project or another user-selected output folder"
     required_viewports:
       - "1366x768"
@@ -293,8 +259,6 @@ presentation_generation_rules:
       - "Open/read the generated screenshots and visually inspect the actual rendered result, not only CSS or arithmetic assumptions."
       - "If visual inspection reveals clipped content, hidden footer/recommendation blocks, excessive whitespace, overflow, unintended overlap between cards/text/shapes/logos/footers/grouped rows, unreadable text, broken logo/assets, or weak NBG design alignment, revise the slide and repeat the screenshot check."
       - "When inspecting screenshots, explicitly check card-to-card, callout-to-card, shape-to-content, logo/footer-to-content, and page-number clearance; a deck is not complete until all unintended collisions are removed and rechecked."
-      - "For HTML-to-PowerPoint conversions, inspect the rendered PowerPoint slide against the rendered HTML reference and confirm that the PowerPoint content is recreated with native objects rather than a captured HTML image."
-      - "For HTML-to-PowerPoint conversions, verify continuous text blocks remain continuous editable text blocks, with only source-intended manual line breaks preserved."
       - "Final response must mention the screenshot files or rendered artifacts used for visual verification and summarize whether clipping/overflow or visual mismatches were observed."
     browser_executable_requirement: >-
       Screenshot automation requires an explicit browser executable path supplied by the local user or execution environment; do not rely on a committed machine-specific default.
@@ -325,13 +289,11 @@ presentation_generation_rules:
     - "For HTML output, verify screenshots show no clipped content, hidden bottom blocks, unintended scroll/overflow, unintended element overlap, broken assets, or unreadable text."
     - "For HTML output, confirm cards, text blocks, decorative shapes, logos, footer elements, page numbers, and grouped rows/columns remain visually separated or intentionally layered without obscuring content."
     - "If screenshots reveal overlap, revise layout zones/copy/grid structure and repeat screenshot validation at 1366x768 and 1440x900 before delivery."
-    - "For HTML-to-PowerPoint conversion, confirm the PPTX uses native editable shapes/text instead of a full-slide or major-content screenshot."
-    - "For HTML-to-PowerPoint conversion, confirm continuous text blocks remain continuous editable text blocks and are not split into per-line text boxes."
-    - "For HTML-to-PowerPoint conversion, visually inspect the generated PowerPoint render against the rendered HTML reference and correct obvious mismatches before delivery."
     - "Confirm NBG logo visibility matches the requested `show_logo` setting."
     - "Confirm no newsletter/email-specific layouts are used unless explicitly requested."
 
 out_of_scope_by_default:
+  - "PowerPoint (.pptx) output and HTML-to-PowerPoint conversion: this skill is HTML presentations and their PDF export only"
   - "NBG-Design/newsletter/"
   - "NBG-Design/nbg-gpt/"
   - "NBG-Design/notebooklm/"

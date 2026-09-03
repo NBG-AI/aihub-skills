@@ -21,9 +21,6 @@ Provide a reusable YAML context/config bundle that Pi Agent can read before crea
 - Validate required repository files before use on a new machine.
 - Use explicit local browser executable paths only when screenshot automation is performed; do not rely on a committed browser fallback path.
 - Require user clarification for missing deck-specific inputs instead of using fallbacks.
-- For HTML-to-PowerPoint conversion requests, require native editable PowerPoint recreation instead of screenshot-based slide content.
-- For HTML-to-PowerPoint conversion requests, preserve continuous text blocks as continuous editable text boxes with natural wrapping and only preserve source-intended line breaks.
-- For HTML-to-PowerPoint conversion requests, require rendered PowerPoint inspection against the rendered HTML reference and correction of obvious visual mismatches before delivery.
 
 ### How to Use
 Run from the repository root because Pi resolves relative `@file` paths against the shell current working directory.
@@ -64,28 +61,6 @@ Provide a single Greek NBG-styled HTML presentation page that summarizes the top
 - Fit the complete slide within browser viewport boundaries while preserving the internal 1920×1080 / 16:9 composition.
 - Keep NBG design-system source files unchanged.
 
-## Sofia Voice Agent Native PowerPoint Recreation
-
-### Function
-Provide a single-slide, 16:9 PowerPoint version of the Sofia Voice Agent automation areas page, recreated with editable PowerPoint-native objects rather than a flattened screenshot.
-
-### Presentation File
-- `presentations/sofia-voice-agent-automation-areas.pptx`
-
-### Generation Script
-- `test_scripts/create_sofia_native_pptx.py`
-
-### Functional Requirements
-- Contain exactly one widescreen PowerPoint slide.
-- Recreate the source HTML page `presentations/sofia-voice-agent-automation-areas.html` with native PowerPoint shapes and editable text.
-- Use the current declarative scene-based OpenXML generator rather than a screenshot converter or HTML raster capture.
-- Preserve continuous copy blocks as continuous editable PowerPoint text blocks with natural wrapping; do not split them into separate text boxes per rendered line.
-- Preserve source-intended manual line breaks only for the HTML title structure and dataset-label break.
-- Use the NBG knockout logo only as a discrete image asset.
-- Avoid embedding a full-slide screenshot or large image representing the HTML page.
-- Preserve the Greek copy and the required numeric values: `77,3%`, `13.090`, `10.116`, `2.376`, `598`, `7.053`, `53,9%`, `18,2%`, and `4,6%`.
-- Keep verification evidence in `docs/reference/powerpoint-visual-verification-sofia-html-to-single-slide-native-powerpoint.md` and rendered screenshots under `test_scripts/screenshots/`.
-
 ## Voice Agent Call Categories Opportunity Slide
 
 ### Function
@@ -93,10 +68,6 @@ Provide a single English NBG-styled executive slide that communicates the voice-
 
 ### Presentation Files
 - HTML source of truth: `presentations/voice-agent-call-categories-slide.html`
-- Native editable PowerPoint output: `presentations/voice-agent-call-categories-slide.pptx`
-
-### Generation Script
-- `test_scripts/create_voice_agent_call_categories_pptx.py`
 
 ### Functional Requirements
 - Present the baseline of 25,000 total inbound calls per day.
@@ -107,28 +78,7 @@ Provide a single English NBG-styled executive slide that communicates the voice-
 - Keep final slide copy in English.
 - Use the NBG 16:9 / 1920×1080 presentation design style with NBG logo and teal-led palette.
 - Fit the HTML slide completely inside common browser viewports without unintended scrolling or clipping.
-- Recreate the PowerPoint version with native editable shapes, text boxes, bars, and layout objects, not a screenshot of the HTML page.
-- Use only the NBG logo as a discrete embedded image asset in the PPTX.
 - Transparently handle the source ambiguity that says “10 categories” but lists 9 category rows by avoiding a misleading category count and adding a source note.
-- Keep verification evidence in `docs/reference/powerpoint-visual-verification-voice-agent-call-categories-slide.md` and rendered screenshots under `test_scripts/screenshots/`.
-
-## HTML-to-PowerPoint Native Recreation Guardrail
-
-### Function
-Define reusable configuration rules for converting HTML slides/pages into editable PowerPoint slides without flattening the HTML content into screenshots.
-
-### Configuration File
-- `config/pi-agent-nbg-design.yaml`
-
-### Functional Requirements
-- Use the rendered HTML page as the authoritative visual reference for layout, color, spacing, typography hierarchy, and proportions.
-- Recreate PowerPoint slides using native editable objects: shapes, text boxes, fonts, fills, borders, rounded rectangles, lines, charts, and layout elements.
-- Do not use a full-slide screenshot, rendered HTML capture, or major rasterized HTML-content region as the PowerPoint slide content.
-- Allow image use only for discrete source/design assets, such as logos or intentional photos.
-- Preserve continuous text blocks as continuous editable PowerPoint text blocks with natural wrapping; do not split paragraphs, headlines, or recommendations into separate text boxes per rendered line.
-- Preserve explicit/source-intended line breaks only where the HTML uses them semantically.
-- Inspect the generated PowerPoint render against the rendered HTML reference and revise until the visual match is as close to 100% as technically possible while preserving native editability.
-- Document non-trivial conversion verification artifacts under `docs/reference/` and screenshots/renders under `test_scripts/screenshots/` when available.
 
 ## HTML Presentation Overlap-Protection Guardrail
 
@@ -180,7 +130,7 @@ Export a finished, verified NBG HTML deck to a PDF that preserves its aesthetics
 - `scripts/lib/find-browser.mjs` (browser locator shared with `scripts/screenshot-deck.mjs`)
 
 ### Functional Requirements
-- Accept `pdf` as an output format next to `html` (default) and `pptx`; a PDF is always produced from the HTML deck, never authored separately.
+- Accept `pdf` as an output format next to `html` (default); PowerPoint is out of scope; a PDF is always produced from the HTML deck, never authored separately.
 - Require the HTML gate first: `embed-assets.mjs`, `verify-deck.mjs --strict`, and the screenshot inspection; never export a deck that fails the gate.
 - Lift only the deck's host layer (navigation toggles `.active` / `.hidden` / inline `display` / `[hidden]`, viewport-fit wrappers, non-slide chrome); never change a slide's own CSS, size, fonts, colours, copy, logos or photography.
 - Jump CSS animations/transitions to their end state, force `print-color-adjust: exact`, and wait for fonts and images before printing.

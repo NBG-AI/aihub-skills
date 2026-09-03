@@ -1,6 +1,6 @@
 ---
 name: nbg-design
-description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu for in-place text editing with a formatting toolbar, shape resize/move, "Export to PDF" and "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu for in-place text editing with a formatting toolbar, shape resize/move, "Export to PDF" and "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 ---
 
 # NBG Design
@@ -35,7 +35,7 @@ Approved defaults:
 - If no deck language is specified, use English (`en`).
 - If no final output format is specified, use HTML (`html`).
 
-Supported output formats: `html` (default), `pdf` (always exported from the finished HTML deck — see "PDF output"), and `pptx` (native recreation — see "HTML-to-PowerPoint conversion guardrails"). A request for "a PDF", "PDF version", "print version", or "send as PDF" selects `pdf`.
+Supported output formats: `html` (default) and `pdf` (always exported from the finished HTML deck — see "PDF output"). **PowerPoint (.pptx) is out of scope**: this skill produces HTML presentations and their PDF export only. If PowerPoint is requested, say so plainly and deliver the HTML deck (and its PDF) instead — never improvise a conversion. A request for "a PDF", "PDF version", "print version", or "send as PDF" selects `pdf`.
 
 Do not create any other fallback configuration values unless the user explicitly approves the exception.
 
@@ -92,7 +92,6 @@ A deck that contains any `file://`, absolute, or relative image path, or any non
    - Example: `<img src="data:image/png;base64,iVBORw0K..." alt="National Bank of Greece" style="height:56px;width:auto;display:block;" />`
 2. To avoid repeating a large data URI, define each one **once** and reuse it. Valid reuse patterns: a CSS class with `background-image: url("data:...")` applied to sized elements (data URIs work in `background-image`), or — in React/Babel decks — a shared JS constant interpolated into each `src`. (Note: CSS `var()` cannot be used for an `<img src>` attribute, only for `background-image`.)
 3. Choose the logo variant by background: primary on light, knockout on dark, small for footers/compact placements. Preserve native aspect ratio (set `height`, let `width:auto`); never stretch or distort.
-4. **For PPTX output**, insert the actual `NBG-Design/assets/<asset>.png|jpeg` image as a picture object; do not re-draw the logo with shapes or text and do not link the image by external path.
 
 ### Deterministic embedding & verification (REQUIRED — especially headless / SSH / Linux)
 
@@ -164,25 +163,13 @@ Viewers of the HTML deck get the same export without any tooling: the in-deck me
 ### Rules
 
 - **Aesthetics are frozen.** Do not add print stylesheets, change slide sizes, fonts, colours or copy "to make it print". If the exporter reports a slide box that differs from the page box, or more pages than slides, the deck's slide sizing/overflow is the bug — fix it in the HTML and re-export.
-- **Do not fake it.** No `window.print()` at Letter/A4 size, no browser "Save as PDF" with headers/footers and margins, no PowerPoint/Word round-trips, no stitched screenshots. Only `scripts/export-pdf.mjs` (or the identical DevTools `Page.printToPDF` settings it uses) produces a compliant PDF.
+- **Do not fake it.** No `window.print()` at Letter/A4 size, no browser "Save as PDF" with headers/footers and margins, no office-suite round-trips, no stitched screenshots. Only `scripts/export-pdf.mjs` (or the identical DevTools `Page.printToPDF` settings it uses) produces a compliant PDF.
 - **Every top-level slide must carry the `slide` class** (the exporter and the screenshot helper both key on it; use `--selector` only for a deck you did not author). Nested helper classes such as `slide-title` / `slide-footer` are fine.
 - **Fonts come from the exporting host.** The PDF embeds exactly the faces the browser resolved for the deck's font stack (`Aptos` → system fallback when Aptos is absent), so PDF and screenshots always agree with each other. If the deliverable must show Aptos, export on a host where Aptos is installed; do not swap the font stack in the deck.
 - **Headless host with no browser:** the exporter exits with code 3. Deliver the verified HTML, state plainly that the PDF could not be produced on this host, and give the one-line command to run where a browser exists. Never substitute a differently produced PDF.
 - The exporter must never be used to print a deck that fails `verify-deck.mjs --strict`.
 
 `<skill-root>` is the directory containing this `SKILL.md`. See `scripts/README.md` for the flags.
-
-## HTML-to-PowerPoint conversion guardrails
-
-When asked to convert an HTML page, HTML slide, or HTML presentation page into PowerPoint:
-
-- Recreate the slide/deck with native editable PowerPoint objects: shapes, text boxes, fonts, fills, borders, rounded rectangles, lines, charts, icons, and layout objects.
-- Do **not** capture the HTML and use it as a full-slide screenshot or background image.
-- Do **not** use a large rasterized content region to flatten text or major slide content.
-- Use images only when they are discrete source/design assets, such as logos or intentional photography.
-- Preserve continuous paragraphs, headlines, labels, recommendations, and copy blocks as continuous editable PowerPoint text boxes with natural wrapping.
-- Preserve explicit/source-intended manual line breaks only where they are semantically present in the HTML.
-- Visually compare the generated PowerPoint rendering against the rendered HTML reference and revise obvious mismatches before delivery.
 
 ## Bundled files
 
@@ -211,7 +198,6 @@ Design-system files:
 - `NBG-Design/NBG Design System.html`
 - `NBG-Design/slide-templates.jsx`
 - `NBG-Design/tweaks-panel.jsx`
-- `NBG-Design/uploads/Powerpoint - Version 1.0_EN.pptx`
 
 Assets:
 
@@ -238,6 +224,8 @@ Presentation screenshots:
 
 ## Excluded by default
 
+- **PowerPoint (.pptx) output and HTML-to-PowerPoint conversion** — out of scope for this skill, which covers HTML presentations and their PDF export only. When asked for PowerPoint, say it is not covered here and deliver the HTML deck and its PDF.
+
 Do not use or expect these adjacent project artifacts unless the user explicitly requests them:
 
 - newsletter/email prototype folders;
@@ -263,6 +251,5 @@ Before delivering NBG slide work:
 - For HTML output, confirm the full slide fits the viewport without clipping or unintended scrolling.
 - For HTML output, confirm rendered screenshots show no unintended overlaps among cards, text blocks, decorative shapes, logos, grouped rows/columns, footers, or page numbers.
 - If any overlap is found during visual verification, revise the layout and repeat the screenshot inspection before delivery; do not report the deck as complete while a collision remains.
-- For PowerPoint output, confirm native editability and absence of full-slide screenshot embedding.
 - For PDF output, confirm the source HTML passed `verify-deck.mjs --strict`, that `scripts/export-pdf.mjs` reported `RESULT: PASS` (pages = slides, page box = the slide box, normally 1920x1080), and that rasterised pages were read and match the browser render (backgrounds, photography, logo, typography, no clipping). Deliver the PDF with its source HTML.
 - Report the files/resources inspected and any visual verification artifacts used.

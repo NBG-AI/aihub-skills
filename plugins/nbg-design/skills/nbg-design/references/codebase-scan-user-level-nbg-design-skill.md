@@ -47,15 +47,12 @@ This is a lightweight design/configuration repository rather than a packaged app
 ## Conventions and Evidence
 
 - `config/pi-agent-nbg-design.yaml:16-30` currently assumes repository-root-relative paths and repository-root execution for `@config/...` usage. The skill must adapt this so bundled resources resolve from the installed skill folder instead of the project root.
-- `config/pi-agent-nbg-design.yaml:49-61` defines core behavior: read the config, inspect the design system/templates, use NBG assets/templates, ask for missing required inputs, default language to `en`, default output to `html`, keep newsletter/email prototypes out of scope, enforce HTML viewport fit, and recreate HTML-to-PowerPoint output with native editable objects.
 - `config/pi-agent-nbg-design.yaml:75-78` identifies the core design-system files: `NBG-Design/`, `NBG Design System.html`, `slide-templates.jsx`, and `tweaks-panel.jsx`.
 - `config/pi-agent-nbg-design.yaml:114-131` lists required logos, photos, and presentation screenshots.
-- `config/pi-agent-nbg-design.yaml:160-227` contains the HTML viewport-fit and HTML-to-PowerPoint native recreation guardrails that should be preserved in `SKILL.md` or bundled config.
 - `config/pi-agent-nbg-design.yaml:231-257` instructs agents to inspect design-system files, use assets, treat screenshots as visual references, and run quality checks.
 - `config/pi-agent-nbg-design.yaml:259-266` explicitly excludes newsletter/email prototype folders and screenshot patterns by default.
 - `config/pi-agent-nbg-design.yaml:268-276` records the missing-information policy and the only approved defaults (`en`, `html`).
 - `docs/design/project-design.md:8-25` documents that the YAML is context text, not native Pi settings, and that Pi does not automatically read nested references.
-- `docs/design/project-functions.MD:11-26` documents functional requirements relevant to a skill: reference NBG files, exclude newsletter/email prototypes, avoid secrets and machine-specific roots, ask for missing inputs, and enforce native PowerPoint recreation.
 - `docs/design/configuration-guide.md:79-84` documents current path-resolution limitations that the user-level skill should remove or rewrite for skill portability.
 - `/Users/giorgosmarinos/.pi/agent/skills/deep-dive-creator/SKILL.md:1-5` shows local Pi skill frontmatter format with `name` and `description`.
 
@@ -70,7 +67,7 @@ This is a lightweight design/configuration repository rather than a packaged app
 | `NBG-Design/slide-templates.jsx` | Copy | Defines reusable 1920×1080 NBG slide templates and references `assets/...` paths, so copy with matching relative asset layout or rewrite references. |
 | `NBG-Design/tweaks-panel.jsx` | Copy | Reusable tweak/edit-mode helpers used by prototypes/templates; include if skill expects agents to inspect or reuse template host behavior. |
 | `NBG-Design/assets/logo-primary.png` | Copy | Primary logo used by templates and brand references. |
-| `NBG-Design/assets/logo-knockout.png` | Copy | Knockout logo used in dark/accent slides and prior PPTX recreations. |
+| `NBG-Design/assets/logo-knockout.png` | Copy | Knockout logo used in dark/accent slides. |
 | `NBG-Design/assets/logo-small.png` | Copy | Small footer/logo mark referenced by `slide-templates.jsx`. |
 | `NBG-Design/assets/photo-fields.jpeg`, `photo-heart.jpeg`, `photo-parthenon.jpeg`, `photo-skate.jpeg`, `photo-street.jpeg` | Copy | NBG photography referenced in config/templates and useful for covers/dividers. |
 | `NBG-Design/screenshots/01-editorial.png`, `01b-editorial-prog.png`, `01c-editorial-end.png`, `02-bold.png`, `03-report.png`, `03b-report-mid.png`, `03c-report-learn.png`, `03d-report-end.png` | Copy or include selected subset | These are the presentation screenshots explicitly listed in config as visual references. |
@@ -88,7 +85,6 @@ This is a lightweight design/configuration repository rather than a packaged app
 | `NBG-Design/newsletter/`, `NBG-Design/nbg-gpt/`, `NBG-Design/notebooklm/` | Explicitly out of scope by default in `config/pi-agent-nbg-design.yaml`; include only if user later requests newsletter/email prototypes. |
 | `NBG-Design/screenshots/email-*.png`, `gpt-*.png`, `lm-*.png`, `train-email-*.png` | Email/newsletter visual references, excluded by current config default. |
 | `NBG-Design/uploads/NBG-GPT_May2026.docx`, `NotebookLM Enterprise_ v2.docx`, `AI_Trainings_Newsletter.md` | Source uploads for adjacent newsletter/prototype work, not required for the reusable presentation design skill by default. |
-| `presentations/*.html`, `presentations/*.pptx`, `presentations/*.md`, `presentations/*.svg` | Generated deliverables from prior requests; not required unless intentionally selected as examples. |
 | `test_scripts/` and `test_scripts/screenshots/` | Verification scripts/artifacts for prior deliverables, not part of the skill package unless downstream adds validation tooling. |
 | `docs/reference/codebase-scan-*`, `refined-request-*`, visual verification docs | Workflow provenance; keep in project reference docs, not in the user-level skill package unless a small provenance note is desired. |
 | Secrets/provider credentials/Pi login data/browser executable paths | No secrets detected in scanned project files, but these must not be copied or hardcoded into the skill. |
@@ -126,7 +122,6 @@ Avoid copying the whole repository. Keep generated presentations and newsletter/
 
 ## Open Risks / Questions for Downstream Planning
 
-- Confirm whether to include the master deck `NBG-Design/uploads/Powerpoint - Version 1.0_EN.pptx`; it is referenced by the config as `source_master_deck` but was not listed in the minimum acceptance criteria except indirectly as design-system source material.
 - Confirm whether `docs/design/*` should be copied into the skill as provenance or summarized in `SKILL.md` to avoid project-doc bloat.
 - If copied YAML remains machine/project-root coupled, downstream must rewrite it before validation; current repository-root wording is not portable from arbitrary working directories.
 - If future synchronization is expected, consider a documented copy/update process, but no script/tool exists today.

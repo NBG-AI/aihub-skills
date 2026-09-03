@@ -41,6 +41,13 @@
 
 ## Completed Items
 
+### 2026-09-03 — PowerPoint scope removed (skill v1.11.0)
+- Detected: User instruction — the skills and plugins must stay totally focused on HTML presentations and their PDF export; any PowerPoint concept is out of scope.
+- Solution: Removed the `pptx` output format, the HTML-to-PowerPoint conversion guardrails (SKILL.md section, `html_to_powerpoint_conversion` config block, every related quality / visual check), the bundled master deck `NBG-Design/uploads/Powerpoint - Version 1.0_EN.pptx`, and the PowerPoint decision blocks, function entries and completed items from these references; added an explicit out-of-scope rule (say so and deliver the HTML deck and its PDF). No script handled PowerPoint, so `scripts/` is unchanged.
+- Affected files: `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `references/*`, plugin README and manifests (1.10.0 → 1.11.0), `NBG-Design/uploads/` removed.
+- Verification: a case-insensitive search for pptx / PowerPoint over the plugin finds only the out-of-scope statements and two chance matches inside base64 image data; the YAML parses; the round-trip test (menu unchanged) still passes.
+
+
 ### 2026-09-03 — Multi-selection, ordering, aligning, distributing, grouping (skill v1.9.0)
 - Detected: User asked for multi-select, ordering, aligning, grouping and distribution of text, shape and image elements in the in-deck menu.
 - Solution: selection model `sel[]` + primary (`setSelection`, `selectAll`, Shift+click, Ctrl/Cmd+click, Shift+drag rubber band, menu add/remove/select-all); union frame with per-member marks; group drags (`shift`, `scaleMembers`), `withRecords()` one `style` record per changed element; arrange row on the shape toolbar — Order via inline `z-index` (`zKey`/`tierAbove`/`tierBelow`/`setZ`, parent isolated for negatives, no DOM re-ordering), Align / Distribute on screen rects relative to the selection or the slide, Group / Ungroup as `data-nbg-group` recorded as a third edit kind `group`; shortcuts Ctrl/Cmd+A, G, Shift+G, ], [, Shift+] / [.
@@ -119,37 +126,10 @@
 
 ### 2026-06-05 — Resolved 10-category wording ambiguity in Voice Agent call-categories slide
 - Detected: The user requested classification into “10 large categories” but supplied 9 category rows whose percentages sum to 100%.
-- Affected files: `presentations/voice-agent-call-categories-slide.html`, `test_scripts/create_voice_agent_call_categories_pptx.py`, `presentations/voice-agent-call-categories-slide.pptx`, `docs/design/plan-007-voice-agent-call-categories-slide.md`, `docs/design/project-design.md`, `docs/design/project-functions.MD`, and `docs/reference/powerpoint-visual-verification-voice-agent-call-categories-slide.md`.
+- Affected files: `presentations/voice-agent-call-categories-slide.html`, `docs/design/plan-007-voice-agent-call-categories-slide.md`, `docs/design/project-design.md`, and `docs/design/project-functions.MD`.
 - Cause: Source-data count mismatch between the prose label and the listed rows.
 - Solution: Avoided a misleading explicit “10 categories” claim in the final slide and added a transparent note: the source percentages list 9 category rows that sum to 100% of the classified set.
-- Verification: The HTML and PPTX contain the supplied percentage distribution, the source note, and the required opportunity/rollout metrics. HTML screenshots and PPTX render/package checks are documented in `docs/reference/powerpoint-visual-verification-voice-agent-call-categories-slide.md`.
-
-### 2026-06-05 — Replaced Sofia native PPTX generator with declarative scene-based implementation
-- Detected: User selected replacement of the existing Sofia HTML-to-PowerPoint implementation instead of only verifying/extending it.
-- Affected files: `test_scripts/create_sofia_native_pptx.py`, `presentations/sofia-voice-agent-automation-areas.pptx`, `docs/design/plan-006-replace-sofia-native-pptx-generator.md`, `docs/design/project-design.md`, `docs/design/project-functions.MD`, and `docs/reference/powerpoint-visual-verification-sofia-html-to-single-slide-native-powerpoint.md`.
-- Cause: The project already had a working native generator, but the user requested a replacement approach for the same single-slide PPTX deliverable.
-- Solution: Replaced the generator with a declarative scene-based standard-library OpenXML implementation that emits native PowerPoint shapes/text and embeds only the discrete NBG knockout logo asset. Regenerated the one-slide PPTX output.
-- Verification: ZIP integrity passed; the deck contains exactly one 16:9 slide; only one media asset is embedded; native shape/text objects are present; all required numeric values are present; HTML reference and Quick Look PPTX render screenshots were saved under `test_scripts/screenshots/` and visually inspected.
-
-### 2026-06-05 — Added HTML-to-PowerPoint native recreation rules to NBG Pi config
-- Detected: User requested that `config/pi-agent-nbg-design.yaml` enforce native HTML-to-PowerPoint recreation, no HTML screenshot embedding, continuous text block preservation, and visual inspection against the HTML reference.
-- Affected files: `config/pi-agent-nbg-design.yaml`, `docs/design/project-design.md`, and `docs/design/project-functions.MD`.
-- Solution: Added explicit expected-agent behavior and a dedicated `presentation_generation_rules.html_to_powerpoint_conversion` section covering native shapes/text/fonts, discrete-only image assets, continuous text policy, rendered visual comparison, and verification artifacts.
-- Verification: Confirmed the config contains the new `html_to_powerpoint_conversion` section and `pptx_converted_from_html` visual verification requirement. PyYAML is not installed in the current environment, so YAML parsing could not be performed with Python.
-
-### 2026-06-05 — Preserved continuous text blocks in native Sofia PPTX
-- Detected: User explicitly required the HTML-to-PowerPoint recreation not to break continuous text blocks into separated lines.
-- Affected files: `test_scripts/create_sofia_native_pptx.py`, `presentations/sofia-voice-agent-automation-areas.pptx`, and `docs/reference/powerpoint-visual-verification-sofia-voice-agent-automation-areas.md`.
-- Cause: The existing native generator used multiple separate line text boxes for several continuous paragraphs/headlines to mimic browser wrapping.
-- Solution: Updated the generator so continuous content is emitted as single editable PowerPoint text blocks with natural wrapping. Preserved only source-intended breaks from the HTML title and dataset label.
-- Verification: Regenerated the PPTX; ZIP integrity passed, the deck contains exactly one 16:9 slide, only one discrete logo image is embedded, no full-slide image exists, all required numeric values are present, the main headline/subtitle/hero label/recommendation copy are continuous text strings, and the Quick Look render was visually inspected against the HTML reference.
-
-### 2026-06-04 — Replaced screenshot-based Sofia PPTX with native PowerPoint recreation
-- Detected: User requested that `presentations/sofia-voice-agent-automation-areas.html` be converted to PowerPoint by recreating the slide with shapes, text, and fonts, explicitly not by using the HTML content as an image.
-- Affected file: `presentations/sofia-voice-agent-automation-areas.pptx`.
-- Cause: The existing PPTX conversion documented in `docs/reference/powerpoint-visual-verification-sofia-voice-agent-automation-areas.md` used a full-slide rendered PNG embedded into PowerPoint, which achieved pixel identity but violated the native-editability requirement.
-- Solution: Added `test_scripts/create_sofia_native_pptx.py`, a standard-library OpenXML generator that creates a one-slide widescreen PPTX with native shapes and editable text. The only embedded image is the discrete NBG knockout logo asset.
-- Verification: Regenerated the PPTX; ZIP integrity passed, slide count is exactly one, slide size is 16:9, only one media asset exists, there is no full-slide image element, all required numeric values are present, and a Quick Look visual render was inspected at `test_scripts/screenshots/sofia-native-ql/sofia-voice-agent-automation-areas.pptx.png`.
+- Verification: The HTML contains the supplied percentage distribution, the source note, and the required opportunity/rollout metrics.
 
 ### 2026-06-03 — Fixed HTML presentation page exceeding screen boundaries
 - Detected: User reported that the generated presentation page exceeded screen boundaries, then clarified that a page-height issue remained.

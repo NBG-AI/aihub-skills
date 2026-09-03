@@ -13,8 +13,8 @@
     {
       "name": "nbg-design",
       "source": "./plugins/nbg-design",
-      "description": "Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, a structure outline and HTML panel, \"Export to PDF\", \"Save edited copy\"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.",
-      "version": "1.10.0",
+      "description": "Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, a structure outline and HTML panel, \"Export to PDF\", \"Save edited copy\"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.",
+      "version": "1.11.0",
       "author": {
         "name": "Giorgos Marinos"
       },
@@ -22,45 +22,6 @@
       "keywords": [
         "nbg",
         "design"
-      ]
-    },
-    {
-      "name": "nbg-presentation-studio",
-      "source": "./plugins/nbg-presentation-studio",
-      "description": "Use when creating, redesigning, or polishing National Bank of Greece (NBG)-branded presentations, slide decks, or board decks — as editable PowerPoint (PPTX, the default) or as self-contained HTML slides. Runs the full McKinsey-grade pipeline (Pyramid-Principle narrative, insight-driven action titles, NBG brand system, charts/tables) through one unified deck spec to either renderer, then an automated brand + quality QA gate. Triggers include: create presentation, make slides, build a deck, board-ready deck, ExCo/board pack, redesign this deck, polish slides, NBG presentation, NBG slides, HTML slides, pptx, executive summary deck, quarterly report deck, strategy deck.",
-      "version": "1.2.0",
-      "author": {
-        "name": "Giorgos Marinos"
-      },
-      "license": "MIT",
-      "keywords": [
-        "nbg",
-        "presentation",
-        "pptx",
-        "html",
-        "slides",
-        "deck",
-        "brand"
-      ]
-    },
-    {
-      "name": "nbg-design-pptx",
-      "source": "./plugins/nbg-design-pptx",
-      "description": "Use when creating National Bank of Greece (NBG) presentations as editable PowerPoint (.pptx). Default style is the internal team briefing look: pure white slides, one teal accent (#007B85) for highlights, lines and details, grey ink hierarchy, status pills, callout bands, hairline tables and two-panel layouts, lean by design (5-8 slides). The NBG Presentation Design System look of the nbg-design plugin (dark hero and cream covers, dividers, numbered columns, hero stats, chart, table and back-cover companions) stays available as style design-system. Everything is rendered as native, editable PowerPoint objects, never HTML and never screenshots. Triggers include NBG pptx, NBG PowerPoint, internal briefing deck, team briefing, release outlook deck, status deck, lean NBG deck, NBG design-system deck, convert the nbg-design HTML look to PowerPoint.",
-      "version": "1.1.0",
-      "author": {
-        "name": "Giorgos Marinos"
-      },
-      "license": "MIT",
-      "keywords": [
-        "nbg",
-        "design",
-        "pptx",
-        "powerpoint",
-        "presentation",
-        "slides",
-        "deck",
-        "brand"
       ]
     }
   ]
