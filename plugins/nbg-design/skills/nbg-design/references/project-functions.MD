@@ -169,3 +169,30 @@ Define reusable configuration rules that prevent generated HTML presentation pag
 - Render screenshots for generated HTML slides at the required viewport sizes and visually inspect the actual screenshots before delivery.
 - Store visual verification screenshots under `test_scripts/screenshots/` with filenames that include the slide name and viewport size.
 - Repeat revisions and screenshot checks if any clipping, hidden bottom content, overflow, broken assets, or readability/design issues are visible.
+
+## HTML Deck PDF Export
+
+### Function
+Export a finished, verified NBG HTML deck to a PDF that preserves its aesthetics: one page per slide at the slide's own box (the 1920×1080 artboard = 20 × 11.25 in), zero margins, backgrounds and embedded images preserved, vector (selectable) text.
+
+### Script
+- `scripts/export-pdf.mjs` (zero-dependency Node ≥ 18; drives headless Chrome/Chromium/Edge over the DevTools pipe)
+- `scripts/lib/find-browser.mjs` (browser locator shared with `scripts/screenshot-deck.mjs`)
+
+### Functional Requirements
+- Accept `pdf` as an output format next to `html` (default) and `pptx`; a PDF is always produced from the HTML deck, never authored separately.
+- Require the HTML gate first: `embed-assets.mjs`, `verify-deck.mjs --strict`, and the screenshot inspection; never export a deck that fails the gate.
+- Lift only the deck's host layer (navigation toggles `.active` / `.hidden` / inline `display` / `[hidden]`, viewport-fit wrappers, non-slide chrome); never change a slide's own CSS, size, fonts, colours, copy, logos or photography.
+- Jump CSS animations/transitions to their end state, force `print-color-adjust: exact`, and wait for fonts and images before printing.
+- Print with `Page.printToPDF` (`printBackground`, `preferCSSPageSize`, `scale 1`, page size = the measured box of slide 1; `--size WxH` only overrides a wrong slide box).
+- Verify that the PDF page count equals the slide count and that every slide box equals the page box; exit 1 otherwise (the PDF is still written for diagnosis). A mismatch is a slide sizing/overflow defect to fix in the HTML.
+- Exit 3 when no browser exists on the host; the agent then delivers the HTML and the one-line export command for a host with a browser.
+- After a PASS, rasterise a few pages (`pdftoppm`) and read them next to the browser screenshots (cover, a divider, a dense content slide, the last slide at minimum) before delivery.
+- Deliver the PDF together with its source HTML unless the user wants only the PDF; report the exporter's slides / pages / page-box line.
+
+### How to Use
+```bash
+node "<skill-root>/scripts/export-pdf.mjs" my-deck.html            # writes my-deck.pdf next to the deck
+node "<skill-root>/scripts/export-pdf.mjs" my-deck.html -o out/my-deck.pdf --browser "/path/to/chrome"
+pdftoppm -r 72 -png my-deck.pdf pages/my-deck && pdfinfo my-deck.pdf
+```

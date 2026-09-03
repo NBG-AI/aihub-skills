@@ -26,11 +26,11 @@
 - Current handling: No script was created because executable automation and target OS support remain unconfirmed.
 - Resolution condition: User approves or declines adding a validation script and confirms target OS expectations.
 
-### Low — Decide local browser path handling for screenshot automation
-- Detected: 2026-06-04
-- Context: The previous screenshot command included a macOS-specific Chrome executable path. The portable config now requires an explicit local browser executable path when screenshot automation is used.
-- Current handling: `config/pi-agent-nbg-design.yaml` uses `<browser-executable>` and documents that no committed fallback browser path should be used.
-- Resolution condition: User confirms that manual browser-path substitution is sufficient, or requests a documented local config mechanism.
+### Low — No-browser exit path of the browser-backed scripts is verified by review only
+- Detected: 2026-09-03
+- Context: `scripts/export-pdf.mjs` and `scripts/screenshot-deck.mjs` exit with code 3 when `scripts/lib/find-browser.mjs` finds no Chrome/Chromium/Edge. The development host always has Chrome at its standard macOS path, so the branch could only be reviewed, not executed; the explicit `--browser <bad path>` error branch and the pipe/verification paths were executed.
+- Current handling: The branch mirrors the pre-existing `screenshot-deck.mjs` logic (unchanged semantics) and is documented in `SKILL.md` and `scripts/README.md`.
+- Resolution condition: Run either script once on a host without a browser (e.g. a bare Linux container) and confirm exit code 3 with the documented message.
 
 ## Configuration Defaults / Exceptions Log
 
@@ -40,6 +40,23 @@
 - Scope: `config/pi-agent-nbg-design.yaml` only.
 
 ## Completed Items
+
+### 2026-09-03 — Added PDF export that preserves the HTML deck's aesthetics (skill v1.3.0)
+- Detected: User requested that the skill support exporting a presentation to PDF "without changes in aesthetics".
+- Affected files: `scripts/export-pdf.mjs` (new), `scripts/lib/find-browser.mjs` (new, shared), `scripts/screenshot-deck.mjs`, `scripts/README.md`, `SKILL.md`, `config/pi-agent-nbg-design.yaml`, `references/project-design.md`, `references/project-functions.MD`, `references/configuration-guide.md`, plugin/marketplace manifests (1.2.0 → 1.3.0).
+- Cause: The skill had no PDF path; any ad-hoc route (browser Save-as-PDF at A4 with headers, `window.print()`, Office round-trips, stitched screenshots) re-flows or rasterises the 1920×1080 design.
+- Solution: A zero-dependency Node exporter drives headless Chrome over the DevTools pipe, lifts only the deck's navigation/viewport-fit layer, shows every top-level `.slide` in flow, settles animations/fonts/images, and prints one page per slide at the slide's own box with backgrounds forced and vector text. It verifies pages = slides and slide box = page box and exits non-zero otherwise. `pdf` is now an accepted output format with rules in `SKILL.md` and the YAML (`presentation_generation_rules.pdf_export`).
+- Verification: Three real decks produced with this skill (15 / 11 / 17 slides; `.active`-toggle, stacked-scroll and `.hidden`-toggle hosts) exported with pages = slides and 1440 × 810 pt pages; pdftoppm renders pixel-diffed against 1920×1080 browser screenshots show ≤ 0.16 % of pixels with a solid difference (text anti-aliasing). Synthetic decks confirmed the overflow failure path (exit 1), the `--size` mismatch report, a 1280×720 deck kept as authored, animation/transition end states, and the `--selector` / `--browser` error paths. Record: `docs/nbg-design-docs/verification.md` (development workspace).
+
+### 2026-09-03 — Fixed three defects in `scripts/screenshot-deck.mjs` found while verifying the PDF export
+- Detected: Reference screenshots of two real decks showed slide 1 for every slide, and the slide count was too high.
+- Cause: (1) the navigation shim only toggled `.active`, so `.hidden`-toggle and stacked scrolling decks never changed slide; (2) the shim was injected at the first `</body>` string, which one deck had inside an HTML comment, so the shim never ran; (3) the slide counter matched `slide-title` / `slide-footer` as slides.
+- Solution: The shim now isolates the Nth top-level `.slide` in place (hides the others with a class, lifts `.hidden` / `[hidden]` / inline display, keeps the deck's scaling), is injected before the last `</body>`, and the counter matches the exact class token. The browser locator moved to `scripts/lib/find-browser.mjs`.
+- Verification: All three decks now capture 15 / 11 / 17 distinct slides and match the PDF pages.
+
+### 2026-09-03 — Resolved: local browser path handling for screenshot automation and PDF export
+- Context: Formerly the pending item "Decide local browser path handling for screenshot automation" (detected 2026-06-04).
+- Solution: Both browser-backed scripts auto-detect Chrome/Chromium/Edge (`--browser` flag, `NBG_BROWSER` / `CHROME_BIN` / `CHROME_PATH` / `BROWSER` env, standard macOS/Linux locations, `PATH`) and fail clearly on a non-executable explicit path; no committed fallback path exists. Documented in `references/configuration-guide.md`.
 
 ### 2026-06-05 — Added overlap-protection guardrails for generated NBG HTML presentations
 - Detected: `agentic-engineering-nbg-executive-presentation.html` slides 2 and 3 contained unintended content collisions visible in screenshots at 1366×768 and 1440×900.

@@ -8,16 +8,18 @@
 //
 // It navigates slides generically by injecting a tiny shim into a temp copy of the deck:
 // on load / hashchange it shows slide N via window.showSlide / window.gotoSlide if present,
-// otherwise by toggling `.active` on the Nth `.slide`. So it works for both hash-based and
-// showSlide-based decks without the deck needing changes.
+// otherwise by toggling `.active` on the Nth `.slide` (and lifting a `.hidden` toggle when the
+// deck uses one). So it works for hash-based, showSlide-based and class-toggle decks without
+// the deck needing changes. The browser locator is shared with export-pdf.mjs (lib/find-browser.mjs).
 //
 // Zero dependencies. Any Node >= 16. The agent still must READ the PNGs and judge them —
 // this script only produces the images.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync, accessSync, constants } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { resolve, join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
+import { findBrowser, NO_BROWSER_EXIT_CODE } from './lib/find-browser.mjs';
 
 const USAGE = `NBG deck screenshot helper (optional, needs a browser)
 Usage: node screenshot-deck.mjs <deck.html> [-o <dir>] [--viewports WxH,WxH] [--slides 1,2,5] [--browser <path>]
@@ -43,53 +45,44 @@ function parseArgs(argv) {
   return a;
 }
 
-function findBrowser(explicit) {
-  // An explicit --browser flag is authoritative: honor it or fail clearly (no silent fallback).
-  if (explicit) {
-    try { accessSync(explicit, constants.X_OK); return explicit; }
-    catch { return { error: `--browser path is not an executable: ${explicit}` }; }
-  }
-  const candidates = [
-    process.env.NBG_BROWSER, process.env.CHROME_BIN, process.env.CHROME_PATH, process.env.BROWSER,
-    // macOS
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-    '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
-    // Linux common paths
-    '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable',
-    '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/chrome',
-    '/snap/bin/chromium', '/usr/bin/microsoft-edge',
-  ].filter(Boolean);
-  for (const c of candidates) {
-    try { accessSync(c, constants.X_OK); return c; } catch { /* keep looking */ }
-  }
-  // PATH lookup as a last resort
-  for (const name of ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-browser', 'chrome']) {
-    const r = spawnSync(process.platform === 'win32' ? 'where' : 'which', [name], { encoding: 'utf8' });
-    if (r.status === 0 && r.stdout.trim()) return r.stdout.trim().split('\n')[0];
-  }
-  return null;
-}
-
 const SHIM = `
+<style>.nbg-shot-hidden{display:none!important}</style>
 <script>/* nbg screenshot-deck shim */
 (function(){
+  function topSlides(){
+    return Array.prototype.filter.call(document.querySelectorAll('.slide'), function(el){
+      return !(el.parentElement && el.parentElement.closest('.slide'));
+    });
+  }
   function go(n){
-    try { if (typeof window.showSlide === 'function') return window.showSlide(n); } catch(e){}
-    try { if (typeof window.gotoSlide === 'function') return window.gotoSlide(n); } catch(e){}
-    var s = document.querySelectorAll('.slide');
-    if (s.length) s.forEach(function(el,i){ el.classList.toggle('active', i === n-1); });
+    // 1. let the deck's own navigation run first, if it exposes one
+    try { if (typeof window.showSlide === 'function') window.showSlide(n); } catch(e){}
+    try { if (typeof window.gotoSlide === 'function') window.gotoSlide(n); } catch(e){}
+    // 2. then force the Nth top-level slide to be the only visible one, IN PLACE, so the
+    //    deck's own scaling/centering wrapper still applies (works for .active toggles,
+    //    .hidden toggles, inline display toggles, and stacked scrolling decks alike)
+    var s = topSlides();
+    s.forEach(function(el,i){
+      var on = (i === n-1);
+      el.classList.toggle('nbg-shot-hidden', !on);
+      el.classList.toggle('active', on);
+      if (el.classList.contains('hidden') && on) el.classList.remove('hidden');
+      if (on) { el.removeAttribute('hidden'); ['display','opacity','visibility'].forEach(function(p){ el.style.removeProperty(p); });
+        if (getComputedStyle(el).display === 'none') el.style.setProperty('display','block','important'); }
+    });
     if (typeof window.scaleSlide === 'function') { try { window.scaleSlide(); } catch(e){} }
+    window.scrollTo(0,0);
   }
   function cur(){ var h=(location.hash||'').replace(/[^0-9]/g,''); return parseInt(h,10)||1; }
-  window.addEventListener('load', function(){ go(cur()); });
+  // run after the deck's own load handlers (this script is appended last) and once more on the next frame
+  window.addEventListener('load', function(){ go(cur()); requestAnimationFrame(function(){ go(cur()); }); });
   window.addEventListener('hashchange', function(){ go(cur()); });
 })();
 </script>`;
 
 function countSlides(html) {
-  const m = html.match(/class\s*=\s*["'][^"']*\bslide\b[^"']*["']/g);
+  // exact class token `slide` only — `slide-title` / `slide-footer` must not count as slides
+  const m = html.match(/class\s*=\s*["'](?:[^"']*\s)?slide(?:\s[^"']*)?["']/g);
   return m ? m.length : 1;
 }
 
@@ -107,7 +100,7 @@ function main() {
     console.error('  This host appears to have no browser. Screenshot verification is skipped.');
     console.error('  Run the mandatory static gate instead: node verify-deck.mjs <deck>.html --strict');
     console.error('  (Or set NBG_BROWSER / CHROME_BIN, or pass --browser <path>.)');
-    process.exit(3);
+    process.exit(NO_BROWSER_EXIT_CODE);
   }
 
   const outDir = resolve(process.cwd(), args.out || join('test_scripts', 'screenshots'));
@@ -125,8 +118,10 @@ function main() {
     ? args.slides.split(',').map((n) => parseInt(n, 10)).filter(Boolean)
     : Array.from({ length: total }, (_, i) => i + 1);
 
-  // temp copy with the navigation shim injected
-  const shimmed = html.includes('</body>') ? html.replace('</body>', SHIM + '\n</body>') : html + SHIM;
+  // temp copy with the navigation shim injected before the LAST </body> (a deck may mention
+  // "</body>" earlier inside an HTML comment; injecting there would silently disable the shim)
+  const bodyEnd = html.lastIndexOf('</body>');
+  const shimmed = bodyEnd >= 0 ? html.slice(0, bodyEnd) + SHIM + '\n' + html.slice(bodyEnd) : html + SHIM;
   const tmp = join(tmpdir(), `nbg-shoot-${process.pid}-${Date.now()}-${basename(deck)}`);
   writeFileSync(tmp, shimmed, 'utf8');
 

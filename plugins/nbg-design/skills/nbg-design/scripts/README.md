@@ -1,15 +1,17 @@
-# NBG Design — build & verification scripts
+# NBG Design — build, verification & export scripts
 
-Two zero-dependency Node scripts (any Node >= 16, no `npm install`) that make asset
-embedding deterministic and add a browser-free quality gate. They exist because the
-hand-pasting of large base64 data URIs is the step that silently breaks in headless /
-SSH / Linux runs — the model "approximates" a photo with a gradient or substitutes a
-text/box logo, and with no display to screenshot, the lapse ships.
+Zero-dependency Node scripts (Node >= 18, no `npm install`) that make asset embedding
+deterministic, add a browser-free quality gate, capture per-slide screenshots, and export
+the finished deck to PDF. They exist because the hand-pasting of large base64 data URIs is
+the step that silently breaks in headless / SSH / Linux runs — the model "approximates" a
+photo with a gradient or substitutes a text/box logo, and with no display to screenshot,
+the lapse ships — and because a PDF produced any other way (browser "Save as PDF",
+`window.print()` at A4, Office round-trips) changes the deck's aesthetics.
 
-Both scripts resolve the bundled assets **relative to the script's own location** (the
+All scripts resolve the bundled assets **relative to the script's own location** (the
 skill root), never the current working directory — so they work from any cwd and on any
-machine, as long as the **whole skill folder** (including `NBG-Design/assets/`) was
-copied, not just `SKILL.md`.
+machine, as long as the **whole skill folder** (including `NBG-Design/assets/` and
+`scripts/lib/`) was copied, not just `SKILL.md`.
 
 ## 1. Embed assets — `embed-assets.mjs`
 
@@ -56,11 +58,71 @@ node "<skill-root>/scripts/screenshot-deck.mjs" my-deck.html [-o <dir>] [--viewp
 ```
 
 - Auto-detects a browser (override with `--browser <path>` or env `NBG_BROWSER` / `CHROME_BIN`).
-- Navigates slides generically (injects a shim that drives `window.showSlide` / `window.gotoSlide`
-  if present, else toggles `.active` on the Nth `.slide`) — works for both deck styles.
+- Navigates slides generically: injects a shim (before the **last** `</body>`) that calls the
+  deck's `window.showSlide` / `window.gotoSlide` if present, then forces the Nth top-level
+  `.slide` to be the only visible one **in place** — so `.active` toggles, `.hidden` toggles,
+  inline `display` toggles and stacked scrolling decks all work, and the deck's own
+  viewport-fit scaling still applies to the capture.
+- Counts slides by the exact class token `slide` (`slide-title` / `slide-footer` do not count).
 - Default viewports `1366x768,1440x900`; default output `test_scripts/screenshots/`.
 - **Exit codes:** 0 = screenshots written, 1 = error, **3 = no browser found** (a soft signal — fall
   back to `verify-deck.mjs --strict`, which is the mandatory gate on headless hosts).
+
+## 4. Export to PDF — `export-pdf.mjs` (needs a browser)
+
+Turns the finished, verified HTML deck into a PDF **without changing its aesthetics**: one
+page per slide at the slide's own box (the 1920×1080 artboard = 20 × 11.25 in at 96 dpi),
+zero margins, backgrounds and embedded images preserved, vector (selectable) text.
+
+```
+node "<skill-root>/scripts/export-pdf.mjs" my-deck.html [-o my-deck.pdf] [--size WxH] [--selector <css>]
+                                                        [--settle <ms>] [--timeout <ms>] [--browser <path>]
+                                                        [--debug-html <path>]
+```
+
+How it works: the deck is opened in headless Chrome/Chromium/Edge and driven over the
+DevTools protocol (`--remote-debugging-pipe`, so nothing to install). A shim evaluated in
+the page lifts the **host layer only** — navigation toggles (`.active` / `.hidden` / inline
+`display` / `[hidden]`), the viewport-fit wrappers (scaled `#deck` / `.slide-wrap`, fixed
+`#stage`, flex centering), non-slide chrome (buttons, counters) — makes every top-level
+`.slide` visible in normal flow, jumps CSS animations/transitions to their end state,
+forces `print-color-adjust: exact`, waits for fonts and images, then prints with
+`Page.printToPDF` (`printBackground`, `preferCSSPageSize`, `scale: 1`, page size = slide box).
+**A slide's own CSS, size, fonts, colours, copy, logos and photography are never touched**;
+a slide whose box differs from slide 1 is reported, not resized.
+
+Flags:
+
+- `-o, --out` — output path (default: next to the deck, same name, `.pdf`).
+- `--size WxH` — force the page box in CSS px; use only when the deck's slide box is wrong.
+  The default is the measured box of slide 1 (a 1280×720 deck yields 1280×720 pages).
+- `--selector` — slide selector (default `.slide`; nested matches ignored). Only for decks
+  not authored with this skill.
+- `--settle` — extra ms after fonts/images are ready (default 400).
+- `--timeout` — whole browser session (default 120000 ms).
+- `--browser` / env `NBG_BROWSER`, `CHROME_BIN` — explicit browser binary.
+- `--debug-html` — dump the prepared (print-layout) DOM for inspection when a page looks off.
+
+Fonts: the PDF embeds the faces the browser resolved on the exporting host for the deck's
+font stack (`pdffonts my-deck.pdf` lists them). With Aptos absent, both the screenshots and
+the PDF use the same system fallback — export where Aptos is installed if it must appear.
+
+Built-in verification (exit 1 on failure): PDF page count must equal the slide count; every
+slide box must equal the page box. A mismatch is a defect in the deck (a slide with
+`height:auto` that overflows spills to an extra page; an undetected slide is missing) — fix
+the HTML and re-export, never add print CSS or resize slides to get past it.
+
+**Exit codes:** 0 = PDF written and verified, 1 = error / verification failure, **3 = no
+browser found** — deliver the verified HTML, say the PDF could not be produced on this host,
+and give the one-line command to run on a host with a browser.
+
+After a PASS, rasterise a few pages and **read them** next to the screenshots:
+
+```
+pdftoppm -r 72 -png my-deck.pdf pages/my-deck     # poppler; 1382x777 px per page at 72 dpi
+pdfinfo my-deck.pdf                                # Pages: N, Page size: 1440 x 810 pts
+pdftotext -l 1 my-deck.pdf -                       # text is selectable (vector), not a bitmap
+```
 
 ## Recommended workflow
 
@@ -70,6 +132,9 @@ node "<skill-root>/scripts/embed-assets.mjs"    my-deck.html
 node "<skill-root>/scripts/verify-deck.mjs"     my-deck.html --strict   # mandatory, headless-safe
 node "<skill-root>/scripts/screenshot-deck.mjs" my-deck.html            # optional, when a browser exists
 # then READ the PNGs and inspect them
+node "<skill-root>/scripts/export-pdf.mjs"      my-deck.html            # when a PDF was requested
+# then rasterise a few pages and READ them against the screenshots
 ```
 
-`<skill-root>` is the directory that contains `SKILL.md`.
+`<skill-root>` is the directory that contains `SKILL.md`. `scripts/lib/find-browser.mjs` is
+the browser locator shared by the two browser-backed scripts.

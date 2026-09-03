@@ -52,6 +52,11 @@ presentation_workflow:
     - "Ask for missing presentation-specific inputs instead of substituting fallback values, except for the explicit defaults defined in this file."
     - "If no deck language is specified, assume English (`en`)."
     - "If no final output format is specified, assume HTML (`html`)."
+    - "Accepted output formats are html (default), pdf, and pptx. A PDF is always exported from the finished, verified HTML deck with `node <skill-root>/scripts/export-pdf.mjs <deck>.html` — one page per slide at the slide's own box (the 1920x1080 artboard = 20 x 11.25 in, zero margins, backgrounds forced, vector text). Never author a PDF separately, never re-lay the deck out for paper, never produce it via window.print at Letter/A4, browser Save-as-PDF with headers/footers, Office round-trips, or stitched screenshots."
+    - "The HTML gate (embed-assets.mjs, verify-deck.mjs --strict, visual check) is a precondition for the PDF export: the PDF inherits every defect of the HTML. Do not export a deck that fails verify-deck.mjs --strict."
+    - "export-pdf.mjs verifies that the PDF page count equals the slide count and that every slide box equals the page box, and exits non-zero otherwise. Treat any such failure as a defect in the deck's slide sizing/overflow: fix the HTML and re-export; do not add print stylesheets, resize slides, or change copy to make it print."
+    - "After the export, rasterise a few pages (e.g. `pdftoppm -r 72 -png <deck>.pdf <prefix>` when poppler is present, otherwise open the PDF) and read them next to the browser screenshots: cover, one divider, one dense content slide, last slide at minimum. Deliver the PDF together with its source HTML unless the user wants only the PDF, and report the exporter's slides/pages/page-box line."
+    - "If export-pdf.mjs exits with code 3 (no Chrome/Chromium/Edge on the host), deliver the verified HTML, state that the PDF could not be produced on this host, and give the one-line export command to run where a browser exists. Never substitute a differently produced PDF."
     - "For HTML presentation output, preserve a 16:9 NBG slide composition while fitting the complete slide inside the browser viewport."
     - "Delivered HTML must be fully self-contained: embed every image (NBG logo AND photography) as a base64 data URI by pasting the entire contents of the matching NBG-Design/assets/<asset>.datauri.txt file as the src. NEVER reference an image by a file:// URL, an absolute path, or a relative path in delivered HTML — a file:// path into the plugin cache (e.g. file:///home/<user>/.claude/plugins/.../logo-knockout.png) breaks on every other machine and is the most common cause of a missing logo. Never substitute the logo with text, initials, a colored box, or a CSS/SVG re-creation. Choose the logo variant by background (primary on light, knockout on dark, small for footers). For PPTX, insert the <asset>.png|jpeg as a picture object. Before delivery, confirm every img/background-image value starts with data:image/ and there are zero file://, absolute, or relative image paths."
     - "Do not hand-paste large base64 data URIs (the step that fails in headless/SSH/Linux runs). Author the deck with image placeholder tokens ({{LOGO_PRIMARY}}, {{LOGO_KNOCKOUT}}, {{LOGO_SMALL}}, {{PHOTO_FIELDS}}, {{PHOTO_HEART}}, {{PHOTO_PARTHENON}}, {{PHOTO_SKATE}}, {{PHOTO_STREET}}), define each token once via a reusable CSS background-image class, then embed deterministically with `node <skill-root>/scripts/embed-assets.mjs <deck>.html`. The script resolves bundled assets relative to itself, so it works from any cwd and on any host."
@@ -70,7 +75,7 @@ presentation_workflow:
     - "desired_slide_count_or_depth"
   optional_user_inputs_with_defaults:
     - "preferred_language: one of en, gr, bi; default en"
-    - "final_output_format_or_delivery_target: default html"
+    - "final_output_format_or_delivery_target: one of html, pdf, pptx; default html (pdf is exported from the HTML deck by scripts/export-pdf.mjs)"
 
 source_material:
   refined_request: "references/refined-request-user-level-nbg-design-skill.md"
@@ -222,9 +227,36 @@ presentation_generation_rules:
       verification_artifacts:
         - "Save rendered HTML reference screenshots and PowerPoint render/thumbnail screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, when screenshot tooling is available."
         - "Document package/object verification and visual inspection evidence under `docs/reference/` for non-trivial conversions."
+  pdf_export:
+    required_when: "The user asks for a PDF, a PDF version, a print version, or to send/share the deck as PDF."
+    primary_policy: "print_the_verified_html_deck_with_the_browser_engine_aesthetics_frozen"
+    tool: "scripts/export-pdf.mjs (zero-dependency Node; drives headless Chrome/Chromium/Edge over the DevTools pipe; auto-detects the browser, override with --browser or NBG_BROWSER / CHROME_BIN)"
+    command_template: "node <skill-root>/scripts/export-pdf.mjs <deck>.html [-o <deck>.pdf] [--size WxH] [--selector <css>] [--settle <ms>] [--debug-html <path>]"
+    page_geometry:
+      page_box: "the measured box of slide 1 (normally the 1920x1080 artboard = 20 x 11.25 in at 96 dpi); --size WxH overrides only when the deck's slide box is wrong"
+      margins: "0"
+      pages: "exactly one per top-level .slide"
+      text: "vector, selectable (Page.printToPDF, printBackground=true, preferCSSPageSize=true, scale=1)"
+    what_the_exporter_changes: "only the host layer: navigation toggles (.active/.hidden/inline display/[hidden]) lifted, viewport-fit wrappers (scaled #deck/.slide-wrap, fixed #stage, flex centering) neutralised, non-slide chrome hidden, animations/transitions jumped to their end state, backgrounds forced with print-color-adjust:exact"
+    what_the_exporter_never_changes: "any slide's own CSS, size, fonts, colours, copy, logos or photography — slides of a different size are reported, never resized"
+    preconditions:
+      - "The HTML deck passed verify-deck.mjs --strict and its screenshots were inspected."
+      - "Every top-level slide carries the `slide` class (nested slide-title / slide-footer helpers are fine); use --selector only for a deck not authored with this skill."
+    verification:
+      - "Exporter RESULT: PASS — pages == slides, page box == slide box (a mismatch means slide sizing/overflow in the HTML; fix the deck, re-export)."
+      - "Rasterise and read pages: `pdftoppm -r 72 -png <deck>.pdf <prefix>` (poppler) or open the PDF; compare cover, a divider, a dense content slide and the last slide against the browser screenshots; check backgrounds, photography, logo lockup, typography, no clipping, no animation start-states."
+      - "Optional: `pdfinfo <deck>.pdf` (page count, 1440 x 810 pts for the 1920x1080 artboard) and `pdftotext` to confirm the text is selectable."
+    forbidden:
+      - "window.print() / browser Save-as-PDF at Letter or A4, with headers, footers or margins."
+      - "Print stylesheets, slide resizing, font or copy changes added only to make the deck print."
+      - "PowerPoint/Word round-trips, screenshot stitching, or any raster-only PDF as the deliverable."
+      - "Delivering a PDF from a deck that fails verify-deck.mjs --strict."
+    no_browser_policy: "Exit code 3 = no browser on this host. Deliver the verified HTML, say the PDF could not be produced here, and give the one-line command to run on a host with Chrome/Chromium/Edge."
+    delivery: "PDF plus its source HTML (unless the user wants only the PDF); report the exporter's slides / pages / page-box line and the pages read."
   visual_verification:
     required_for_output_formats:
       - "html"
+      - "pdf"
       - "pptx_converted_from_html"
     screenshot_directory: "test_scripts/screenshots/ in the active working project or another user-selected output folder"
     required_viewports:
@@ -260,6 +292,7 @@ presentation_generation_rules:
     - "Prefer concise slide copy and speaker-notes-style expansion where needed."
   quality_checks:
     - "For HTML output, run `node <skill-root>/scripts/verify-deck.mjs <deck>.html --strict` and confirm it passes (mandatory, headless-safe). Embed assets with scripts/embed-assets.mjs first. Never report a deck complete while this gate fails."
+    - "For PDF output, confirm the source HTML passed verify-deck.mjs --strict, that `node <skill-root>/scripts/export-pdf.mjs <deck>.html` reported RESULT: PASS (pages == slides, page box == slide box, normally 1920x1080), and that rasterised pages were read and match the browser render (backgrounds, photography, logo, typography, no clipping, no animation start-states). Deliver the PDF with its source HTML."
     - "Confirm every slide has a clear purpose."
     - "Confirm colors match the allowed palette."
     - "Confirm language setting is consistent with the requested deck language, or English (`en`) when no language was requested."
