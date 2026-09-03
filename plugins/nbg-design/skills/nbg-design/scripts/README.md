@@ -145,7 +145,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 - Inlines one `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">` before the
   last `</body>`: `lib/print-layout.js` (the print-layout shim shared with `export-pdf.mjs`)
   followed by `lib/deck-menu.js` (menu UI, editing, persistence, saved copy, print
-  orchestration). The deck stays fully self-contained (~72 KB more).
+  orchestration). The deck stays fully self-contained (~120 KB more).
 - Idempotent: re-running reports `already current`, refreshes a same-version block, or
   upgrades an older one (including the v1.4 `nbg-pdf-menu-script` block). `--remove` strips it.
 - The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Edit text* (when the
@@ -201,23 +201,99 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   `solid` and deep teal unless a colour is set) with palette colour swatches, corner radius,
   opacity (%), shadow (Default / none / soft / strong), Reset (same as *Reset shape*), Done.
   Each change writes the element's inline style and updates the same `style` record as its
-  geometry. Keys typed in its inputs are not treated as deck shortcuts.
-- **Persistence**: edits are recorded as `{ path, kind: 'html' | 'style', original, value }`
+  geometry. Keys typed in its inputs are not treated as deck shortcuts. With several shapes
+  selected, X / Y / W / H show the selection box (moving it shifts all, W / H scale all from the
+  top-left corner) and the style controls apply to every selected shape.
+- **Several shapes at once** (text blocks, cards, panels, images): Shift+click adds a shape to the
+  selection or removes it; Shift+drag on the slide draws a rubber band (`#nbg-marquee`) and adds
+  every top-level shape fully inside it; Ctrl/Cmd+A selects every top-level shape of the slide;
+  Ctrl/Cmd+click picks the precise element under the pointer alone (a group member included);
+  the menu offers *Add to selection* / *Remove from selection* / *Select all shapes on this
+  slide*. "Top-level shape" = an element that `resolveShapeTarget` maps to itself with no such
+  ancestor inside the slide, excluding layers that fill ≥ 98 % of the slide (backdrops). The
+  frame (`#nbg-shape-box`) spans the union of the members, each member gets a dashed mark
+  (`#nbg-sel-marks`, the primary one solid), the chip and the toolbar report the count. Dragging
+  inside moves every member (`shift()`: absolute geometry for positioned elements, relative
+  offsets for flow ones); a handle scales the whole selection proportionally
+  (`scaleMembers()`: each member keeps its fraction of the union box; Shift keeps the union's
+  proportions); arrows nudge all; Reset resets every member with a record. Modifier clicks and
+  rubber-band drags are default-prevented and the following `click` is swallowed so the deck's
+  own click handlers never see them; a right-click keeps the selection so the menu can add to it.
+- **Stack picker** for nested / overlapping shapes: `shapeStack(x, y)` = the shape candidates
+  (`isShapeCandidate`: a boxed element or a text block — so a text block inside a card is
+  reachable here although a click resolves to the card) among `elementsFromPoint`, front-most
+  first. The menu renders them as *Select at this point* items (click = select alone,
+  Shift+click = add); the toolbar's `[data-a=stack]` select lists `ancestorShapes(el)`, the
+  selected element and `childShapes(el)` (first shape level inside it), hidden for a single
+  shape with nothing around or inside it; Ctrl/Cmd+click goes through `pickAtPoint()` — the
+  front-most shape at the point, or the next one out when the current selection is already in
+  that stack; Tab selects `parentShape`, Shift+Tab the child shape under the last pointer
+  position (`lastPoint`) or the first child. API: `shape.stackAt(x, y)`, `enclosing(el)`,
+  `inside(el)`.
+- **Arrange row** (second row of the shape toolbar, `data-a` buttons):
+  - *Order* — bring to front / bring forward / send backward / send to back (Ctrl/Cmd+] / [ step,
+    with Shift to the front/back; *Bring to front* / *Send to back* are in the menu too). The
+    element's siblings are ranked by their effective layer (`zKey`: negative z-index < in-flow
+    content 0 < positioned with z-index auto/0 = 0.5 < positive z-index; ties in document
+    order) and the target gets the next free tier (`tierAbove` / `tierBelow`); one-step moves
+    push the neighbours out of the way only on a collision. `setZ()` writes inline `z-index`,
+    adds `position: relative` to a static element, and — for a negative index — sets
+    `isolation: isolate` on the parent when it is not already a stacking context (otherwise the
+    element would sink below the slide background). No DOM re-ordering, so every recorded path
+    stays valid; each touched element gets its own `style` record.
+  - *Align* left / centre / right / top / middle / bottom and *Distribute* horizontally /
+    vertically: computed on screen rects and converted through the slide scale; the reference
+    is the selection's union box (default with 2+ shapes; distribute keeps the first and last
+    in place, needs 3+) or the slide (`to slide` in the select; distribute spreads 2+ shapes
+    with equal gaps to the slide edges). Shapes are ordered along the axis, ties by the other
+    axis, then document order.
+  - *Group* (Ctrl/Cmd+G) / *Ungroup* (Ctrl/Cmd+Shift+G): logical groups — each member gets
+    `data-nbg-group="<id>"`, recorded as a `group` edit (`{ path, kind: 'group', original,
+    value }`, so it persists, lands in the saved copy and is removed by Discard); selecting any
+    member selects the whole group (`expandGroups`), grouping a selection that contains groups
+    merges them; Ctrl/Cmd+click or `solo()` picks one member.
+- **HTML panel** (`#nbg-code`, menu *Show HTML*, toolbar `</>`, Ctrl/Cmd+Shift+H; movable by its
+  grip, resizable, docked right by default). *Tree*: `renderTree()` renders the current slide
+  (`codeSlide()`: the slide of the followed element, else the one at the viewport centre) as
+  rows keyed by element path (`data-path`), expanded two levels plus the ancestors of the
+  selection, twisties remembered per path; rows carry tag, id, classes (ours filtered), truncated
+  attributes (data: URIs elided), a text preview, and a dot for elements with records. Sync:
+  `codeFollow()` runs on selection / edit changes, `codeRefresh()` (one rAF) on records and on a
+  `MutationObserver` over the body (our own elements ignored) so deck-driven slide switches keep
+  the tree current; clicking a row → `selectSolo` (Shift → `addToSelection`), double-click →
+  `startEdit`, hover → `#nbg-hover` outline, arrows / Enter navigate. *Code*: a textarea with the
+  followed element's `cleanOuterHtml` (our transient attributes removed); `applyRaw()` parses the
+  text into a `<template>`, requires exactly one root of the same tag, `sanitise()`s it
+  (script / iframe / object / embed, `on*` attributes, `javascript:` URLs), then writes style,
+  `data-nbg-group`, the other attributes and `innerHTML` and records each that changed —
+  `style`, `group`, `html`, and the fourth kind **`attrs`** (`attrsOf()`: the remaining
+  attributes as sorted `[name, value]` JSON; `applyAttrs()` reconciles). A dirty textarea is not
+  overwritten when the selection moves (Apply or Revert first). Records are kept for
+  descendants too, so earlier edits inside the element still replay in order.
+- **Persistence**: edits are recorded as `{ path, kind: 'html' | 'style' | 'group' | 'attrs', original, value }`
   (child-index path from the root) and stored in `localStorage` under
   `nbg-deck-edits:<pathname>#<title>`; a reload re-applies them, dropping entries whose original
   markup or style no longer matches.
 - **Save edited copy**: applies the edits to a pristine snapshot of the deck taken when the
   script ran (`DOMParser`; path lookup with a unique-markup fallback) and downloads
   `<name>-edited.html` — loads exactly like the original, still self-contained, still carrying
-  the menu. **Discard edits** restores the originals and clears storage.
+  the menu. **Discard changes on this slide** (`discardSlideEdits(slide)`: the records whose
+  element lives inside the slide under the pointer — `slideAtPoint`, else the slide at the
+  viewport centre — restored newest first and dropped) leaves the other slides alone;
+  **Discard edits** restores the originals of every slide and clears storage.
 - **Export to PDF**: commits any open edit, applies the print layout (every slide in flow, page
   box = slide box, zero margins, backgrounds forced, animations settled), calls
   `window.print()`, and restores the interactive deck — classes, inline styles, attributes and
   the viewport-fit scaling — when the dialog closes. Ctrl/Cmd+P and the browser's Print command
   use the same `beforeprint`/`afterprint` hooks, so any print of the deck is faithful.
 - `window.nbgDeck = { version, pdf: { prepare, restore, exportPdf }, edit: { start, commit,
-  cancel, isEditing, list, format, buildEditedHtml, save, discard }, shape: { select, deselect,
-  selected, reset }, resolveTextTarget, resolveShapeTarget }` is exposed (`window.nbgPdf`
+  cancel, isEditing, list, format, buildEditedHtml, save, discard, discardSlide(slide),
+  listFor(slide), slideAt(x, y) }, code: { open(el), show(el), close, isOpen, tab, refresh,
+  target, source, setSource, apply, revert, rowOf(el) }, shape: { select, selectMany,
+  add, remove, toggle, solo, selectAll, deselect, selected, selection, reset, align(kind, ref),
+  distribute('h'|'v', ref), order('front'|'forward'|'backward'|'back'), group, ungroup, groupOf,
+  shapesOf(slide), stackAt(x, y), enclosing(el), inside(el) }, resolveTextTarget,
+  resolveShapeTarget }` is exposed (`window.nbgPdf`
   aliases the pdf part); an external driver sets `window.__nbgPdfExternal = true` to keep the
   print hooks idle (`export-pdf.mjs` does).
 - Chrome and Edge honour the page's `@page { size: 1920px 1080px; margin: 0 }` in the dialog;

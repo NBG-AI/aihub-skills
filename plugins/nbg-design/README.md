@@ -1,6 +1,6 @@
 # nbg-design
 
-Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved), or editable PowerPoint recreations using the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 
 ## Overview
 
@@ -20,8 +20,16 @@ Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-men
   with handles appears; drag to resize (Shift keeps proportions) or move, arrows nudge, Esc finishes.
   A movable shape toolbar sets X/Y/W/H, fill, border, corner radius, opacity and shadow.
   *Reset shape* restores one element.
+- **Several shapes at once** — Shift+click adds shapes, Shift+drag draws a selection box, Ctrl/Cmd+A
+  selects the whole slide; move, scale and style them together, and use the toolbar's arrange row to
+  bring to front / send to back, align (left, centre, right, top, middle, bottom), distribute with
+  equal gaps, and group / ungroup. Nested or overlapping shapes: the menu's *Select at this point*
+  list, the toolbar's Stack list, Ctrl/Cmd+click cycling and Tab / Shift+Tab reach every level.
+- **Show HTML** — a panel with the slide's element tree synced both ways with the selection (click a
+  row to select that element, select on the slide to reveal its row) and the selected element's
+  editable source; Apply records the change like every other edit (scripts are stripped).
 - Edits survive a reload and **Save edited copy** downloads the deck with the changes baked in;
-  **Discard edits** restores the originals.
+  **Discard changes on this slide** restores one slide, **Discard edits** restores them all.
 - **Export to PDF** — choose *Save as PDF* in the browser's print dialog and get the same
   one-page-per-slide PDF as the CLI exporter, with no tooling installed.
 
