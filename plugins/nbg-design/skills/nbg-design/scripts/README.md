@@ -252,7 +252,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
     value }`, so it persists, lands in the saved copy and is removed by Discard); selecting any
     member selects the whole group (`expandGroups`), grouping a selection that contains groups
     merges them; Ctrl/Cmd+click or `solo()` picks one member.
-- **Toolbar modes**: `ui = { text, shape, code }`, each `'auto'` (appears with the selection),
+- **Toolbar modes**: `ui = { text, shape, code, ai }`, each `'auto'` (appears with the selection),
   `'on'` (pinned) or `'off'` (closed), persisted in `localStorage` under `nbg-deck-ui:<pathname>`.
   `syncToolbars()` is the single place that shows or hides the three panels (`toolbarWanted`:
   text = editing or a selected text block, shape = a selection, code = on request) and is called
@@ -276,6 +276,51 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   popstate, resize and transitionend schedule the same check for decks that navigate without an
   attribute change. `codeSlide()` lets the slide on screen win over a followed element whose
   slide left the screen, so the Outline / Tree always show the current slide.
+- **AI assistant panel** (`#nbg-ai`, menu *Ask the assistant*, Ctrl/Cmd+Shift+L, or the *AI assistant*
+  entry of the Toolbars section; `ui.ai` is `'auto'` = opens on request, like the structure panel;
+  `placeAi()` docks it right, or beside the structure panel when that is open). Three views (`setAiView`):
+  *Ask* — prompt drop-down (`AI_BUILTIN` + the viewer's `aiPrompts`, stored under
+  `nbg-deck-ai-prompts`), request textarea (a `paste` with an image file attaches it; `drop` too;
+  *Read clipboard* uses `navigator.clipboard.read()`), Attach checkboxes (`aiSettings.include`),
+  Reply radio (`aiSettings.output`: `answer` / `replace`), Send, status, the answer with Copy /
+  Apply to selection / Undo (`aiSetReply` keeps the raw text and renders it with `aiMd`: escaped, then
+  fences, inline code, bold, italic, headings). *Prompts* — list with Use / Edit / Delete (own) or Copy to mine
+  (built-in), an inline editor (name, text, mode). *Settings* — provider (`AI_PROVIDERS`), URL,
+  model, API version (Azure OpenAI only), key with Show, key scope, Standard values, Save, Test.
+  `aiSend()`: `aiCheckSettings()` first (no fallbacks — a missing provider / URL / model / key
+  returns a message and opens Settings), then the text (prompt, additional instructions, the slide
+  source via `cleanOuterHtml(slide)` + `aiDeckCss(slide, store)` — the rules the slide uses, read from
+  `document.styleSheets` (root / body rules, style rules matching the slide or something inside it, the
+  same inside @media / @supports; @font-face and @keyframes are named in a comment, not copied; the raw
+  `<style>` text is the fallback when the sheets cannot be read) — and the selected elements' sources,
+  all through `aiStripData()` (`AI_DATA_RE`: any data URI of 64+ payload chars, base64 or not, with
+  parameters, in attributes or `url()`) into `nbg-image:N` placeholders, one store per request; text above
+  `AI_MAX_TEXT` (300 KB) is refused with the per-attachment breakdown, which every error message also
+  carries),
+  then the images (`aiCaptureSlide()`: the `.nbg-capturing` class hides our UI *before*
+  `getDisplayMedia({ preferCurrentTab: true, … })` opens the picker, and the first frame whose
+  `captureTime` is later than the hide — at most six frames / 2 s — is drawn to a canvas cropped to
+  the slide's rect × the capture scale; `aiNormaliseImage()` caps the longest side at 1600 px and re-encodes
+  when needed), then `aiCall()` → `aiBuildRequest()` (Messages API: `<url>/v1/messages`, image
+  blocks `{ type: 'image', source: { type: 'base64', media_type, data } }`, `x-api-key` +
+  `anthropic-dangerous-direct-browser-access` for Anthropic, `api-key` for Foundry, always
+  `anthropic-version`; chat completions: `<url>/chat/completions` or Azure's `/openai/v1/…` /
+  deployments route, `image_url` parts with data URLs, Bearer or `api-key`) and `aiParseReply()`
+  (text blocks / `choices[0].message.content`; a `refusal` stop reason and error envelopes become
+  messages). *Replace*: `aiApplyReply()` unfences the reply, restores the placeholders and calls
+  `applySource()` — the function the Code tab's `applyRaw()` now shares (one root of the same
+  tag, `sanitise()`, style / group / attrs / html records); `aiUndo()` re-applies the element's
+  previous source. Keys: `nbg-deck-ai-key:<provider>` in `localStorage` or `sessionStorage` (`keyScope`),
+  never inside the settings object; a pre-profile `nbg-deck-ai-key` is migrated to the active provider on load.
+  Per provider: `aiSettings.profiles[provider] = { url, model, apiVersion, keyScope }` (`aiSyncProfile()` keeps
+  the active one current); `aiSwitchProvider()` (the form's provider change, `settings({ provider })`, or a
+  differing provider on load) stores the current fields and loads the target's, blank when never entered. Remembered per browser in `nbg-deck-ai-settings` (`aiMergeSettings`
+  validates every field on load): provider / URL / model / API version / key scope, prompt, attachments,
+  reply choice, `view`, `request`, `pos` (`makeMovable`'s new `onMoved` callback after a drag; `null`
+  when the grip's double-click re-docks) and `size` (a `ResizeObserver` records the corner resize's
+  inline width / height; `aiApplySize()` restores it clamped to the viewport); the request box and the
+  settings fields save on `input` (300 ms debounce), selects and checkboxes on `change`. Test hooks: `window.nbgDeck.ai.hooks({ capture, fetch })`
+  replace the capture and the network call; `lastRequest()` returns what was built.
 - **Structure / HTML panel** (`#nbg-code`, menu *Show structure* / *Show HTML*, toolbar `</>`,
   Ctrl/Cmd+Shift+O / H; movable by its grip and by its header row — `makeMovable(panel,
   relayout, '.nbg-ch')` adds the header's empty space and the "Slide N" title as a second drag

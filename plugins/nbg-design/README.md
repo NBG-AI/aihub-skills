@@ -1,6 +1,6 @@
 # nbg-design
 
-Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, an AI assistant panel, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 
 ## Overview
 
@@ -33,6 +33,12 @@ Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-men
   selection, idle when nothing applies), untick or its ✕ to hide it, *Automatic* for the default.
   Every toolbar adapts to the selection and the slide; the text toolbar also formats selected text
   blocks without entering edit mode.
+- **Ask the assistant** — a panel that sends a request to an AI model together with, each optional,
+  a screenshot of the slide, the slide's source, the selected element's source and an image from
+  the clipboard; prompts come from a drop-down (built-in ones plus your own, editable); the reply is
+  shown, or replaces the selected element (recorded like every other edit, with Undo). Providers:
+  Anthropic, Azure-hosted Anthropic (Microsoft Foundry), OpenAI-compatible, Azure OpenAI, DeepSeek.
+  Endpoint, model and API key are entered by the viewer and kept in their browser only.
 - Edits survive a reload and **Save edited copy** downloads the deck with the changes baked in;
   **Discard changes on this slide** restores one slide, **Discard edits** restores them all.
 - **Export to PDF** — choose *Save as PDF* in the browser's print dialog and get the same
