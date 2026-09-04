@@ -332,6 +332,19 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   inline width / height; `aiApplySize()` restores it clamped to the viewport); the request box and the
   settings fields save on `input` (300 ms debounce), selects and checkboxes on `change`. Test hooks: `window.nbgDeck.ai.hooks({ capture, fetch })`
   replace the capture and the network call; `lastRequest()` returns what was built.
+- **Detachable panels** (`detachPanel(k, target?)` / `reattachPanel(k)` for `shape`, `code`, `ai`; ⧉ buttons;
+  API `toolbars.detach / reattach / detached`): the target window is
+  `documentPictureInPicture.requestWindow(size)` when present, else `window.open('', 'nbg-deck-<k>',
+  'popup=yes,…')` (null → toast), or a window passed in (the round-trip test passes an iframe's
+  `contentWindow`). The deck's `#nbg-deck-menu-style` is `importNode`d into the window plus
+  `DETACHED_CSS` (`.nbg-panel.nbg-detached` static, filling the window, grip / ⧉ / fold hidden); the
+  panel element is appended to that document (adoption keeps its listeners), `.nbg-detached` added,
+  `ui[k] = 'on'`; `toolbarWanted()` is true while detached, `placePanel` / `placeCode` / `placeAi` and
+  `makeMovable`'s drag return early for a detached panel; `stools.ownerDocument.activeElement` /
+  `ai.ownerDocument.activeElement` replace `document.activeElement` where the panel's inputs are checked.
+  The window's `pagehide` (close), `closeCode()` / `closeAi()` / the shape toolbar's ✕ reattach; the
+  deck's `pagehide` closes the windows. `aiCaptureSlide()` calls `getDisplayMedia` on the assistant's
+  window when detached (that window holds the user activation; `preferCurrentTab` only when attached).
 - **The menu**: `menuPinned` (📌 in the head, `data-action=pin`) makes `closeMenu()` a re-render
   (`refreshMenu()`: `renderMenu()`, `clampMenu()`, focus kept) unless `closeMenu(true)` — Cancel and Esc;
   a pinned menu ignores outside pointerdowns, scrolling and resizing (clamped), and `syncToolbars()`

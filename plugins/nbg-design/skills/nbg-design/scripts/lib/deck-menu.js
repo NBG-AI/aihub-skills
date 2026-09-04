@@ -50,6 +50,13 @@
  *     the toolbar's Stack list offers the enclosing shapes, the selected one and its child shapes,
  *     Ctrl/Cmd+click on the same spot cycles outward, Tab / Shift+Tab step out / in.
  *
+ * Detachable panels: the shape toolbar, the structure panel and the assistant can be moved into a
+ * window of their own (⧉ in their header): a Document Picture-in-Picture window where the browser
+ * offers one (Chrome / Edge — always on top, movable anywhere on the desktop, closed with the deck),
+ * else a pop-up window. The panel element itself moves into that window's document, so everything it
+ * does still acts on the deck; closing the window brings it back. The text toolbar stays attached: it
+ * works on the deck window's live text selection.
+ *
  * Toolbars (menu "Toolbars" section): each toolbar — text formatting, shape & arrange, structure /
  * HTML — is 'auto' (appears with the selection), 'on' (pinned: stays visible, idle when nothing
  * applies) or 'off' (closed with its ✕ or unticked in the menu; stays hidden until shown again);
@@ -115,7 +122,7 @@
  */
 (function () {
   if (window.nbgDeck) return;
-  var VERSION = 9;
+  var VERSION = 10;
   var ACCENT = '#003841', CYAN = '#00ADBF', INK = '#0A1416', CREAM = '#F5F8F6', MUTED = '#5B6B6D';
   var FONT = "'Aptos', 'Inter', Helvetica, Arial, sans-serif";
 
@@ -272,6 +279,7 @@
   var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML', ai: 'AI assistant' };
   function textTargets() { return editing ? [editing.el] : sel.filter(hasOwnText); }   // what the text toolbar works on
   function toolbarWanted(k) {
+    if (isDetached(k)) return true;                 // a detached panel stays in its window (idle when nothing applies)
     if (ui[k] === 'off') return false;
     if (ui[k] === 'on') return true;
     if (k === 'text') return !!editing || textTargets().length > 0;
@@ -387,6 +395,7 @@
     host.insertBefore(grip, host.firstChild);
     var pd = null;
     function down(handle, e) {
+      if (detachedPanel(panel)) return;
       if (handle !== grip && e.target.closest('button, input, select, textarea, a, .nbg-grip')) return;
       if (e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
@@ -415,6 +424,7 @@
     grip.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); });
   }
   function placePanel(panel, anchor) {   // anchor = the selection's rect, or null for an idle toolbar (docked top-left)
+    if (detachedPanel(panel)) return;
     panel.style.left = '0px'; panel.style.top = '0px';
     var tr = panel.getBoundingClientRect(), pos = panelPos[panel.id], left, top;
     if (pos) {
@@ -1274,6 +1284,7 @@
     h += '<i class="nbg-tsep"></i>';
     h += '<button type="button" data-s="reset" class="nbg-tquiet" title="Restore the selected shapes’ original size, position and style">Reset</button>';
     h += '<button type="button" data-s="done" class="nbg-tdone" title="Finish (Esc)">Done</button>';
+    h += '<button type="button" data-s="detach" class="nbg-tquiet nbg-detach" title="Detach into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the toolbar back">⧉</button>';
     h += '<button type="button" data-s="close" class="nbg-tquiet nbg-tclose" title="Hide this toolbar (right-click → Toolbars shows it again)">✕</button>';
     // second row: arrange
     h += '</div><div class="nbg-row">';
@@ -1300,7 +1311,8 @@
       var b = e.target.closest('button'); if (!b) return;
       e.preventDefault();
       var a = b.getAttribute('data-s'), ar = b.getAttribute('data-a');
-      if (a === 'close') { setToolbarMode('shape', 'off'); return; }
+      if (a === 'close') { if (isDetached('shape')) reattachPanel('shape'); setToolbarMode('shape', 'off'); return; }
+      if (a === 'detach') { detachPanel('shape'); return; }
       if (!shape) return;
       if (ar) arrange(ar, b.getAttribute('data-v'));
       else if (a === 'done') deselectShape();
@@ -1347,7 +1359,7 @@
     if (!shape) { stools.querySelector('[data-count]').textContent = 'No shape selected'; var sl0 = stools.querySelector('[data-a=stack]'); sl0.hidden = true; placePanel(stools, null); return; }
     var el = shape.el, g = geom(el), st = el.style, multi = sel.length > 1;
     placePanel(stools, unionRect(sel));
-    var set = function (k, v) { var i = stools.querySelector('[data-s=' + k + ']'); if (document.activeElement !== i) i.value = v; };
+    var set = function (k, v) { var i = stools.querySelector('[data-s=' + k + ']'); if (stools.ownerDocument.activeElement !== i) i.value = v; };
     if (multi) { var a = unionArt(); set('left', Math.round(a.left)); set('top', Math.round(a.top)); set('width', Math.round(a.width)); set('height', Math.round(a.height)); }
     else {
       set('left', Math.round(g.positioned ? g.left : g.rleft)); set('top', Math.round(g.positioned ? g.top : g.rtop));
@@ -1583,6 +1595,7 @@
     hover.hidden = false; hover.style.left = r.left + 'px'; hover.style.top = r.top + 'px'; hover.style.width = r.width + 'px'; hover.style.height = r.height + 'px';
   }
   function placeCode() {
+    if (detachedPanel(code)) return;
     var pos = panelPos[code.id];
     if (pos) { code.style.left = Math.max(0, Math.min(pos.left, window.innerWidth - code.offsetWidth)) + 'px'; code.style.top = Math.max(0, Math.min(pos.top, window.innerHeight - code.offsetHeight)) + 'px'; return; }
     code.style.left = Math.max(8, window.innerWidth - code.offsetWidth - 8) + 'px'; code.style.top = '8px';   // docked to the right
@@ -1606,6 +1619,7 @@
       '<button type="button" data-tab="code" title="The selected element’s source — edit it and Apply (Ctrl/Cmd+Enter)">Code</button>' +
       '<span class="nbg-cfill"></span>' +
       '<button type="button" data-c="refresh" class="nbg-tquiet" title="Re-read the slide">↻</button>' +
+      '<button type="button" data-c="detach" class="nbg-tquiet nbg-detach" title="Detach into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the panel back">⧉</button>' +
       '<button type="button" data-c="fold" class="nbg-tquiet nbg-fold" title="Collapse this panel to its header — click again to expand">▾</button>' +
       '<button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc)">✕</button></div>' +
       '<div class="nbg-cb nbg-cout"><div class="nbg-of"><input type="search" class="nbg-oq" placeholder="Filter by text…" aria-label="Filter shapes">' +
@@ -1625,7 +1639,7 @@
       if (b && b.hasAttribute('data-tab')) { setTab(b.getAttribute('data-tab')); return; }
       if (b && b.hasAttribute('data-c')) {
         var c = b.getAttribute('data-c');
-        if (c === 'close') closeCode(); else if (c === 'refresh') codeRefresh(); else if (c === 'fold') setFold('code', !ui.fold.code); else if (c === 'apply') applyRaw(); else if (c === 'revert') revertRaw();
+        if (c === 'close') closeCode(); else if (c === 'refresh') codeRefresh(); else if (c === 'detach') detachPanel('code'); else if (c === 'fold') setFold('code', !ui.fold.code); else if (c === 'apply') applyRaw(); else if (c === 'revert') revertRaw();
         else if (c === 'copy') { try { navigator.clipboard.writeText(codeRaw.value); setRawStatus('Copied.'); } catch (x) { codeRaw.select(); document.execCommand('copy'); setRawStatus('Copied.'); } }
         return;
       }
@@ -1709,6 +1723,7 @@
   function closeCodePanel() { code.hidden = true; hoverEl(null); if (codeObserver) codeObserver.disconnect(); }
   function closeCode() {
     if (!code || code.hidden) return false;
+    if (isDetached('code')) reattachPanel('code');
     setToolbarMode('code', 'off');
     return true;
   }
@@ -1883,7 +1898,8 @@
     try {
       await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
       var hiddenAt = performance.now();
-      try { stream = await navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: true, selfBrowserSurface: 'include', surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude' }); }
+      var capWin = isDetached('ai') ? detached.ai : window;   // the click came from the assistant's window: that window holds the user activation
+      try { stream = await capWin.navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: capWin === window, selfBrowserSurface: 'include', surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude' }); }
       catch (e) { throw new Error('The screenshot was not allowed (' + (e && e.message ? e.message : e) + ') — allow the capture of this tab, or untick “Screenshot of the slide”.'); }
       track = stream.getVideoTracks()[0];
       video.srcObject = stream; video.muted = true; video.playsInline = true;
@@ -2079,7 +2095,7 @@
       '<button type="button" data-tab="prompts" title="Prompts: the built-in ones and your own (add, edit, delete)">Prompts</button>' +
       '<button type="button" data-tab="structure" title="Structure: how a right-click on a row of the structure panel’s Outline or Tree asks the assistant">Structure</button>' +
       '<button type="button" data-tab="settings" title="Settings: provider, endpoint, model and API key — kept in this browser only">Settings</button>' +
-      '<span class="nbg-cfill"></span><button type="button" data-c="fold" class="nbg-tquiet nbg-fold" title="Collapse this panel to its header — click again to expand">▾</button><button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc) — right-click → Toolbars shows it again">✕</button></div>' +
+      '<span class="nbg-cfill"></span><button type="button" data-c="detach" class="nbg-tquiet nbg-detach" title="Detach into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the panel back">⧉</button><button type="button" data-c="fold" class="nbg-tquiet nbg-fold" title="Collapse this panel to its header — click again to expand">▾</button><button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc) — right-click → Toolbars shows it again">✕</button></div>' +
       // Ask
       '<div class="nbg-ab nbg-aask">' +
       '<div class="nbg-af"><span class="nbg-al">Prompt</span><select data-ai="prompt" title="The prompt sent with your request — built-in ones and yours (Prompts tab)"></select></div>' +
@@ -2141,6 +2157,7 @@
       if (b.hasAttribute('data-tab')) { setAiView(b.getAttribute('data-tab')); return; }
       var c = b.getAttribute('data-c'); if (!c) return;
       if (c === 'close') closeAi();
+      else if (c === 'detach') detachPanel('ai');
       else if (c === 'fold') setFold('ai', !ui.fold.ai);
       else if (c === 'send') aiSend();
       else if (c === 'paste') aiReadClipboard();
@@ -2203,7 +2220,7 @@
     Array.prototype.forEach.call(ai.querySelectorAll('[data-tab]'), function (b) { b.classList.toggle('nbg-on', b.getAttribute('data-tab') === v); });
     ai.querySelector('.nbg-aask').hidden = v !== 'ask'; ai.querySelector('.nbg-aprompts').hidden = v !== 'prompts'; ai.querySelector('.nbg-astructure').hidden = v !== 'structure'; ai.querySelector('.nbg-asettings').hidden = v !== 'settings';
     if (v === 'prompts') renderAiPrompts(); else if (v === 'settings') aiFillSettingsForm(); else if (v === 'structure') renderAiStructure();
-    else { var req = ai.querySelector('[data-ai=req]'); if (document.activeElement !== req) req.focus({ preventScroll: true }); }
+    else { var req = ai.querySelector('[data-ai=req]'); if (ai.ownerDocument.activeElement !== req) req.focus({ preventScroll: true }); }
   }
   function aiPromptOptions(cur) { return '<optgroup label="Built-in">' + AI_BUILTIN.map(function (p) { return aiOpt(p.id, p.name, cur); }).join('') + '</optgroup>' + (aiPrompts.length ? '<optgroup label="Mine">' + aiPrompts.map(function (p) { return aiOpt(p.id, p.name, cur); }).join('') + '</optgroup>' : ''); }
   function renderAiStructure() {
@@ -2367,6 +2384,7 @@
     ai.querySelector('[data-c=send]').disabled = aiBusy;
   }
   function placeAi() {
+    if (detachedPanel(ai)) return;
     var pos = panelPos[ai.id];
     if (pos) { ai.style.left = Math.max(0, Math.min(pos.left, window.innerWidth - ai.offsetWidth)) + 'px'; ai.style.top = Math.max(0, Math.min(pos.top, window.innerHeight - ai.offsetHeight)) + 'px'; return; }
     var left = window.innerWidth - ai.offsetWidth - 8;
@@ -2381,9 +2399,59 @@
   }
   function openAiPanel() { ai.hidden = false; placeAi(); layoutAi(); }
   function closeAiPanel() { ai.hidden = true; }
-  function closeAi() { if (!ai || ai.hidden) return false; setToolbarMode('ai', 'off'); return true; }
+  function closeAi() { if (!ai || ai.hidden) return false; if (isDetached('ai')) reattachPanel('ai'); setToolbarMode('ai', 'off'); return true; }
   function aiIsOpen() { return !!(ai && !ai.hidden); }
   window.addEventListener('resize', function () { if (ai && !ai.hidden) placeAi(); });
+
+  /* ---------- detachable panels ---------- */
+  var detached = { shape: null, code: null, ai: null };   // k -> the Window holding the panel
+  function detachedPanel(panel) { return !!(panel && panel.ownerDocument !== document); }
+  function isDetached(k) { var w = detached[k]; return !!(w && !w.closed); }
+  var DETACHED_CSS = 'html,body{margin:0;height:100%;background:#fff;overflow:hidden;font:13px ' + FONT + '}' +
+    '.nbg-panel.nbg-detached{position:static!important;left:auto!important;top:auto!important;width:auto!important;max-width:none!important;height:100vh!important;min-height:0!important;min-width:0!important;box-shadow:none;border:0;border-radius:0;resize:none;box-sizing:border-box;overflow:auto}' +
+    '.nbg-panel.nbg-detached .nbg-grip,.nbg-panel.nbg-detached .nbg-detach,.nbg-panel.nbg-detached .nbg-fold{display:none}' +
+    '#nbg-shape-tools.nbg-detached{height:auto!important;align-items:flex-start}#nbg-shape-tools.nbg-detached .nbg-row{flex-wrap:wrap}' +
+    '.nbg-panel.nbg-detached .nbg-dragsurface{cursor:default}';
+  // move the panel into its own window: a Document Picture-in-Picture window (Chrome / Edge), else a pop-up; `target` = a window to use instead (tests)
+  async function detachPanel(k, target) {
+    if (k !== 'shape' && k !== 'code' && k !== 'ai') return false;
+    if (isDetached(k)) { try { detached[k].focus(); } catch (e) { /* ignore */ } return true; }
+    if (!toolbarPanel(k)) { if (k === 'shape') buildShapeTools(); else if (k === 'code') buildCode(); else buildAi(); }
+    var panel = toolbarPanel(k), w = target || null;
+    var size = k === 'shape' ? { width: 760, height: 160 } : { width: Math.max(360, panel.offsetWidth || 460), height: Math.max(320, panel.offsetHeight || 640) };
+    if (!w) {
+      if (window.documentPictureInPicture && window.documentPictureInPicture.requestWindow) { try { w = await window.documentPictureInPicture.requestWindow(size); } catch (e) { w = null; } }
+      if (!w) { try { w = window.open('', 'nbg-deck-' + k, 'popup=yes,width=' + size.width + ',height=' + size.height); } catch (e) { w = null; } }
+      if (!w) { toast('The browser did not open a window — allow pop-ups for this file, or keep the ' + TOOLBAR_NAMES[k] + ' toolbar here.', 4500); return false; }
+    }
+    var d = w.document;
+    if (!d.body) { d.open(); d.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>'); d.close(); d = w.document; }
+    d.title = 'NBG deck — ' + TOOLBAR_NAMES[k];
+    if (!d.getElementById('nbg-deck-menu-style')) d.head.appendChild(d.importNode(style, true));
+    if (!d.getElementById('nbg-detached-style')) { var x = d.createElement('style'); x.id = 'nbg-detached-style'; x.textContent = DETACHED_CSS; d.head.appendChild(x); }
+    panel.style.left = ''; panel.style.top = ''; panel.style.width = ''; panel.style.height = '';
+    panel.classList.add('nbg-detached');
+    d.body.appendChild(panel);   // adopted into the other document; its listeners travel with it
+    detached[k] = w;
+    ui[k] = 'on'; uiSave();
+    w.addEventListener('pagehide', function () { if (detached[k] === w) reattachPanel(k); });
+    w.addEventListener('resize', function () { if (k === 'shape') layoutShapeTools(); });
+    syncToolbars();
+    toast(TOOLBAR_NAMES[k] + ' detached into its own window — close that window (or ✕ / Esc in the panel) to bring it back.', 3500);
+    return true;
+  }
+  function reattachPanel(k) {
+    var panel = toolbarPanel(k), w = detached[k];
+    detached[k] = null;
+    if (!panel) return false;
+    if (panel.ownerDocument !== document) document.body.appendChild(panel);
+    panel.classList.remove('nbg-detached');
+    if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } }
+    if (k === 'ai') aiApplySize();
+    syncToolbars();
+    return true;
+  }
+  window.addEventListener('pagehide', function () { ['shape', 'code', 'ai'].forEach(function (k) { var w = detached[k]; if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } } }); });
 
   /* ---------- discard / save ---------- */
   function discardEdits() {
@@ -2557,7 +2625,7 @@
     '.nbg-code .nbg-craw{display:flex;flex-direction:column}.nbg-code .nbg-cw{padding:4px 8px;font:12px ' + FONT + ';color:' + MUTED + ';border-bottom:1px solid rgba(0,56,65,.10);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
     '.nbg-code .nbg-raw{flex:1;min-height:0;width:100%;box-sizing:border-box;border:0;outline:none;resize:none;padding:8px;font:inherit;color:' + INK + ';background:#fff;white-space:pre;overflow:auto;tab-size:2}' +
     '.nbg-code .nbg-cf{display:flex;align-items:center;gap:4px;padding:4px 6px;border-top:1px solid rgba(0,56,65,.12);font:12px ' + FONT + '}.nbg-code .nbg-cs{flex:1;color:' + MUTED + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-left:4px}.nbg-code .nbg-cs.nbg-bad{color:#b3261e}' +
-    '.nbg-panel.nbg-ai{width:440px;height:min(82vh,780px);flex-wrap:nowrap}' +
+    '.nbg-panel.nbg-ai{width:480px;height:min(82vh,780px);flex-wrap:nowrap}' +
     '.nbg-ai .nbg-ab{display:flex;flex-direction:column;gap:6px;padding:8px;flex:1;min-height:0;overflow:auto;font:12px/1.4 ' + FONT + ';user-select:text;-webkit-user-select:text}' +
     '.nbg-ai .nbg-ab > *{flex:none}.nbg-ai textarea[data-ai=req]{min-height:64px}' +
     '.nbg-ai .nbg-af{display:flex;align-items:center;gap:6px;flex-wrap:wrap}' +
@@ -2881,7 +2949,7 @@
       align: alignSelection, distribute: distributeSelection, order: reorder, group: groupSelection, ungroup: ungroupSelection,
       groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes,
     },
-    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; } },
+    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { return isDetached(k) ? detached[k] : null; } },
     ai: {
       open: openAi, close: closeAi, isOpen: aiIsOpen, view: function (v) { if (!ai) buildAi(); if (v) setAiView(v); return aiView; },
       send: aiSend, test: aiTest, settings: aiConfigure,

@@ -39,6 +39,9 @@ Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-men
   shown, or replaces the selected element (recorded like every other edit, with Undo). Providers:
   Anthropic, Azure-hosted Anthropic (Microsoft Foundry), OpenAI-compatible, Azure OpenAI, DeepSeek.
   Endpoint, model and API key are entered by the viewer and kept in their browser only.
+- **Detachable panels** — ⧉ moves the shape toolbar, the structure panel or the assistant into a window
+  of its own (Picture-in-Picture in Chrome / Edge: always on top, movable anywhere; a pop-up elsewhere);
+  it keeps working on the deck; closing the window brings it back.
 - Edits survive a reload and **Save edited copy** downloads the deck with the changes baked in;
   **Discard changes on this slide** restores one slide, **Discard edits** restores them all.
 - **Export to PDF** — choose *Save as PDF* in the browser's print dialog and get the same
