@@ -75,6 +75,12 @@
  *     stored in this browser) and free "additional instructions"; the reply is shown in the panel or,
  *     on request, replaces the selected element through the same path as the Code tab's Apply
  *     (same tag, sanitised, recorded — Undo in the panel);
+ *   - the row popup (right-click a row of the structure panel — in the panel's own window when it is
+ *     detached): a small movable dialog for one element
+ *     with the request box, Answer / Replace, the prompt and the attachments; it stays open until the
+ *     viewer closes it (✕, Cancel, Esc) — the status and the reply appear in the popup itself (Copy,
+ *     Undo after a replacement, "Open in the assistant panel" for the full panel), and the assistant
+ *     panel is never opened on its own;
  *   - providers: Anthropic, Azure-hosted Anthropic (Microsoft Foundry), OpenAI-compatible, Azure
  *     OpenAI, DeepSeek. Endpoint, model and API key live in this browser's storage only (the key
  *     optionally for the tab only) and are never written into the deck; nothing is defaulted — a
@@ -113,16 +119,49 @@
  * ai: { open, close, isOpen, view, send, test, settings, prompts, attach, clearImage, image, reply, apply, undo,
  * capture, hooks, lastRequest, providers }, shape: { select, selectMany,
  * add, remove, toggle, solo, selectAll, deselect, selected, selection, reset, align, distribute,
- * order, group, ungroup, groupOf, shapesOf }, resolveTextTarget, resolveShapeTarget } is exposed; window.nbgPdf aliases
+ * order, group, ungroup, groupOf, shapesOf }, config, roots, resolveTextTarget, resolveShapeTarget } is exposed; window.nbgPdf aliases
  * the pdf part. An external driver (export-pdf.mjs, tests) sets window.__nbgPdfExternal = true so
  * the native print hooks stay out of its way.
  *
  * The menu, toast, selection frame and toolbars live outside the slides, so the print layout
  * hides them.
+ *
+ * Configuration (block v11): an optional window.nbgDeckMenuConfig object, set by the inlining script
+ * BEFORE this file runs (add-deck-menu.mjs writes it as the first statement of the block), makes the
+ * same editor work on documents that are not NBG decks:
+ *   - root:  CSS selector of the editable region(s) — the "slides" (default '.slide'; nested matches
+ *            are ignored; e.g. 'body', 'main', 'article', 'section.page'); an invalid selector throws;
+ *   - mode:  'deck' (default) or 'page'. Page mode changes what does not apply to a web page: the
+ *            print path uses the browser's own pagination (backgrounds kept, animations frozen, the
+ *            editor's panels hidden) instead of the one-artboard-per-page layout, the assistant's
+ *            system prompt and built-in prompts speak of a page, and the wording says page / section;
+ *   - unit:  the label of one root in the UI ('Slide' by default, 'Section' in page mode);
+ *   - title: the menu's header and the detached windows' title ('NBG deck' / 'Page editor');
+ *   - aiSystem: replaces the assistant's system prompt.
+ * Nothing else changes: the same edits, records, storage keys, saved copy and API.
  */
 (function () {
   if (window.nbgDeck) return;
-  var VERSION = 10;
+  var VERSION = 11;
+  // configuration hook (see the header): root selector, page mode, labels
+  var CFG = (typeof window.nbgDeckMenuConfig === 'object' && window.nbgDeckMenuConfig) || {};
+  function cfgStr(k) { return typeof CFG[k] === 'string' && CFG[k].trim() ? CFG[k].trim() : ''; }
+  var PAGE_MODE = cfgStr('mode') === 'page';
+  var ROOT_SEL = cfgStr('root') || '.slide';
+  try { document.querySelector(ROOT_SEL); } catch (e) { throw new Error('nbg deck menu: invalid root selector "' + ROOT_SEL + '" in window.nbgDeckMenuConfig.root'); }
+  var UNIT = cfgStr('unit') || (PAGE_MODE ? 'Section' : 'Slide');          // one root, in labels: "Slide 2", "Section 2"
+  var TITLE = cfgStr('title') || (PAGE_MODE ? 'Page editor' : 'NBG deck');  // menu header, detached windows
+  var AREA = PAGE_MODE ? 'page' : 'slide', AREA_CAP = PAGE_MODE ? 'Page' : 'Slide';   // generic wording ("on the page")
+  var WHOLE = PAGE_MODE ? 'page' : 'deck';                                            // the document ("download the page")
+  function rootOf(el) { return el && el.closest ? el.closest(ROOT_SEL) : null; }
+  function isRoot(el) { return !!el && el.nodeType === 1 && el.matches(ROOT_SEL); }
+  function allRoots() {   // top-level matches only (a root inside a root is part of its content)
+    return Array.prototype.filter.call(document.querySelectorAll(ROOT_SEL), function (s) { return !(s.parentElement && s.parentElement.closest(ROOT_SEL)); });
+  }
+  function rootScoped(tag) { return ROOT_SEL.split(',').map(function (s) { return s.trim() + ' ' + tag; }).join(', '); }
+  function unitLabel(root) { return PAGE_MODE && allRoots().length <= 1 ? 'Page' : UNIT + ' ' + (slideIndex(root) + 1); }   // "Slide 2" / "Section 2" / "Page"
+  function unitOf(root) { var n = allRoots().length; return unitLabel(root) + (n > 1 ? ' of ' + n : ''); }                  // "Slide 2 of 12"
+  function unitPhrase(root) { var l = unitLabel(root); return l === 'Page' ? 'the page' : l.charAt(0).toLowerCase() + l.slice(1); }   // "slide 2" / "the page"
   var ACCENT = '#003841', CYAN = '#00ADBF', INK = '#0A1416', CREAM = '#F5F8F6', MUTED = '#5B6B6D';
   var FONT = "'Aptos', 'Inter', Helvetica, Arial, sans-serif";
 
@@ -158,7 +197,7 @@
     if (t && t.nodeType === 3) t = t.parentElement;
     if (!t || !t.closest) return null;
     if (t.closest(OURS)) return null;
-    var slide = t.closest('.slide'); if (!slide) return null;
+    var slide = rootOf(t); if (!slide) return null;
     var el = t;
     while (el && el !== slide && !hasOwnText(el)) el = el.parentElement;
     if (!el || el === slide) return null;
@@ -181,7 +220,7 @@
     if (t && t.nodeType === 3) t = t.parentElement;
     if (!t || !t.closest) return null;
     if (t.closest(OURS)) return null;
-    var slide = t.closest('.slide'); if (!slide || t === slide) return null;
+    var slide = rootOf(t); if (!slide || t === slide) return null;
     var el = t;
     while (el && el !== slide) { if (isBoxy(el)) return el; el = el.parentElement; }
     return resolveTextTarget(t);
@@ -190,7 +229,7 @@
   // reachable this way, although a click resolves to the card)
   function isShapeCandidate(el) { return !!el && el.nodeType === 1 && !el.closest(OURS) && (isBoxy(el) || resolveTextTarget(el) === el); }
   function parentShape(el) {
-    var slide = el.closest('.slide'); if (!slide) return null;
+    var slide = rootOf(el); if (!slide) return null;
     var p = el.parentElement;
     while (p && p !== slide) { if (isShapeCandidate(p)) return p; p = p.parentElement; }
     return null;
@@ -210,7 +249,7 @@
     var out = [];
     document.elementsFromPoint(x, y).forEach(function (el) {
       if (el.closest(OURS)) return;
-      var slide = el.closest('.slide'); if (!slide || el === slide) return;
+      var slide = rootOf(el); if (!slide || el === slide) return;
       if (isShapeCandidate(el) && out.indexOf(el) < 0) out.push(el);
     });
     return out;
@@ -372,7 +411,7 @@
       recordEdit(e.el, 'style', sd ? sd.original : e.preStyle, attrStyle(e.el));
       changed = true;
     }
-    if (changed) toast('Text updated — ' + changesLabel() + '. Right-click → “Save edited copy” to download the deck with your changes.', 5000);
+    if (changed) toast('Text updated — ' + changesLabel() + '. Right-click → “Save edited copy” to download the ' + WHOLE + ' with your changes.', 5000);
     return true;
   }
   function cancelEdit() {
@@ -689,7 +728,7 @@
   var CURSORS = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize', n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize' };
   var MIN = 16;
 
-  function slideOf(el) { return el.closest('.slide'); }
+  function slideOf(el) { return rootOf(el); }
   function slideScale(el) {
     var slide = slideOf(el) || el;
     return slide.offsetWidth ? slide.getBoundingClientRect().width / slide.offsetWidth : 1;
@@ -785,7 +824,7 @@
   function sameGroup() { var id = groupId(shape.el); return !!id && sel.every(function (m) { return groupId(m) === id; }); }
   function selectionToast() {
     var n = sel.length;
-    if (n === 1) toast('Shape selected — drag the handles to resize (Shift keeps proportions), drag inside to move, arrows nudge, Tab selects the enclosing shape; Shift+click adds another shape, Shift+drag on the slide draws a selection box. The toolbar sets size and style, orders, aligns, distributes and groups. Esc when done.', 5000);
+    if (n === 1) toast('Shape selected — drag the handles to resize (Shift keeps proportions), drag inside to move, arrows nudge, Tab selects the enclosing shape; Shift+click adds another shape, Shift+drag on the ' + AREA + ' draws a selection box. The toolbar sets size and style, orders, aligns, distributes and groups. Esc when done.', 5000);
     else toast((sameGroup() ? 'Group of ' : '') + n + ' shapes selected — drag to move them together, handles scale them; the toolbar orders, aligns, distributes and groups them. Shift+click adds or removes a shape, Ctrl/Cmd+click picks one shape alone, Shift+drag draws a selection box. Esc when done.', 5000);
   }
   function setSelection(els, primary, opts) {
@@ -848,7 +887,7 @@
   function selectAllIn(slide) {
     slide = slide || (shape ? slideOf(shape.el) : null); if (!slide) return false;
     var all = slideShapes(slide);
-    if (!all.length) { toast('No shapes found on this slide.', 2000); return false; }
+    if (!all.length) { toast('No shapes found on this ' + AREA + '.', 2000); return false; }
     var ok = setSelection(all, null, { toast: false });
     if (ok) toast(sel.length + ' shape' + (sel.length === 1 ? '' : 's') + ' selected — the toolbar aligns, distributes, orders and groups them.', 3000);
     return ok;
@@ -948,7 +987,7 @@
     if (cancel) { d.members.forEach(function (m) { apply(m.el, 'style', m.preStyle); }); layoutBox(); return; }
     var n = 0;
     d.members.forEach(function (m) { if (track(m.el, 'style', m.preStyle)) n++; });
-    if (n) toast((d.members.length > 1 ? d.members.length + ' shapes' : 'Shape') + ' updated — ' + changesLabel() + '. Right-click → “Save edited copy” to download the deck with your changes.', 4000);
+    if (n) toast((d.members.length > 1 ? d.members.length + ' shapes' : 'Shape') + ' updated — ' + changesLabel() + '. Right-click → “Save edited copy” to download the ' + WHOLE + ' with your changes.', 4000);
     layoutBox();
   }
   function onShapePointerDown(e) {
@@ -1013,7 +1052,7 @@
   function startSelectGesture(e) {
     var t = e.target; if (!t || !t.closest || t.closest(OURS)) return false;
     if (t.closest('a[href], input, textarea, select, button, [contenteditable="true"]')) return false;
-    var slide = t.closest('.slide'); if (!slide) return false;
+    var slide = rootOf(t); if (!slide) return false;
     if (!shape && !e.shiftKey) return false;                          // Ctrl/Cmd+click only refines an existing selection
     e.preventDefault(); e.stopPropagation();
     marquee = { x: e.clientX, y: e.clientY, slide: slide, target: resolveShapeTarget(t), shift: e.shiftKey, pointerId: e.pointerId, moved: false };
@@ -1075,13 +1114,13 @@
         if (Math.round(dx / scale) || Math.round(dy / scale)) shift(el, geom(el), dx / scale, dy / scale);
       });
     });
-    toast(n ? 'Aligned ' + kind + (mode === 'slide' || sel.length < 2 ? ' to the slide' : ' within the selection') + ' — ' + changesLabel() + '.' : 'Already aligned ' + kind + '.', 2500);
+    toast(n ? 'Aligned ' + kind + (mode === 'slide' || sel.length < 2 ? ' to the ' + AREA : ' within the selection') + ' — ' + changesLabel() + '.' : 'Already aligned ' + kind + '.', 2500);
     return n > 0;
   }
   function distributeSelection(axis, mode) {
     if (!shape) return false;
     var horiz = axis === 'h', toSlide = mode === 'slide';
-    if (sel.length < (toSlide ? 2 : 3)) { toast('Select at least ' + (toSlide ? 'two' : 'three') + ' shapes to distribute them' + (toSlide ? '' : ' (or choose “to slide” for two)') + '.', 3000); return false; }
+    if (sel.length < (toSlide ? 2 : 3)) { toast('Select at least ' + (toSlide ? 'two' : 'three') + ' shapes to distribute them' + (toSlide ? '' : ' (or choose “to ' + AREA + '” for two)') + '.', 3000); return false; }
     var items = sel.map(function (el) { return { el: el, r: el.getBoundingClientRect() }; });
     // along the axis, ties by the other axis, then document order (sel is in document order)
     items.sort(function (a, b) { return (horiz ? a.r.left - b.r.left || a.r.top - b.r.top : a.r.top - b.r.top || a.r.left - b.r.left); });
@@ -1290,16 +1329,16 @@
     h += '</div><div class="nbg-row">';
     h += '<span class="nbg-tlabel" data-count>1 shape</span>';
     h += '<select data-a="stack" title="Stack: the shapes enclosing the selected one and the shapes inside it — pick the one you want (Tab / Shift+Tab step out / in)"></select>';
-    h += '<button type="button" data-a="all" class="nbg-tquiet" title="Select every shape on this slide (Ctrl/Cmd+A) — Shift+click adds one, Shift+drag draws a selection box, Ctrl/Cmd+click picks one alone">All</button>';
+    h += '<button type="button" data-a="all" class="nbg-tquiet" title="Select every shape on this ' + AREA + ' (Ctrl/Cmd+A) — Shift+click adds one, Shift+drag draws a selection box, Ctrl/Cmd+click picks one alone">All</button>';
     h += '<i class="nbg-tsep"></i><span class="nbg-tlabel">Order</span>';
     h += abtn('order', 'front', 'Bring to front (Ctrl/Cmd+Shift+])') + abtn('order', 'forward', 'Bring forward one step (Ctrl/Cmd+])') + abtn('order', 'backward', 'Send backward one step (Ctrl/Cmd+[)') + abtn('order', 'back', 'Send to back (Ctrl/Cmd+Shift+[)');
     h += '<i class="nbg-tsep"></i><span class="nbg-tlabel">Align</span>';
     h += abtn('align', 'left', 'Align left edges') + abtn('align', 'center', 'Align horizontal centres') + abtn('align', 'right', 'Align right edges') + abtn('align', 'top', 'Align top edges') + abtn('align', 'middle', 'Align vertical middles') + abtn('align', 'bottom', 'Align bottom edges');
     h += '<i class="nbg-tsep"></i><span class="nbg-tlabel">Distribute</span>';
-    h += abtn('dist', 'h', 'Distribute horizontally — equal gaps between the shapes (three or more; the first and last stay put — or across the slide)') + abtn('dist', 'v', 'Distribute vertically — equal gaps between the shapes');
-    h += '<select data-a="ref" title="Align and distribute relative to the selection’s own box, or to the slide"><option value="selection">to selection</option><option value="slide">to slide</option></select>';
+    h += abtn('dist', 'h', 'Distribute horizontally — equal gaps between the shapes (three or more; the first and last stay put — or across the ' + AREA + ')') + abtn('dist', 'v', 'Distribute vertically — equal gaps between the shapes');
+    h += '<select data-a="ref" title="Align and distribute relative to the selection’s own box, or to the ' + AREA + '"><option value="selection">to selection</option><option value="slide">to ' + AREA + '</option></select>';
     h += '<i class="nbg-tsep"></i>';
-    h += '<button type="button" data-a="code" title="Show the slide’s structure and HTML: an outline with checkboxes for selecting several shapes (Ctrl/Cmd+Shift+O), the element tree (Ctrl/Cmd+Shift+H), and the selected element’s editable source">&lt;/&gt;</button>';
+    h += '<button type="button" data-a="code" title="Show the ' + AREA + '’s structure and HTML: an outline with checkboxes for selecting several shapes (Ctrl/Cmd+Shift+O), the element tree (Ctrl/Cmd+Shift+H), and the selected element’s editable source">&lt;/&gt;</button>';
     h += '<i class="nbg-tsep"></i>';
     h += '<button type="button" data-a="group" title="Group the selected shapes so they select, move, resize and align together (Ctrl/Cmd+G)">Group</button>';
     h += '<button type="button" data-a="ungroup" title="Ungroup (Ctrl/Cmd+Shift+G)">Ungroup</button>';
@@ -1399,6 +1438,13 @@
     });
     return c.outerHTML;
   }
+  // the source the assistant receives: like the Code tab's, minus scripts (this editor's own block included
+  // when the root is the body), our style element and our runtime elements — never useful to a model
+  function aiSourceHtml(el) {
+    var c = el.cloneNode(true);
+    Array.prototype.slice.call(c.querySelectorAll('script, style#nbg-deck-menu-style, ' + OURS)).forEach(function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
+    return cleanOuterHtml(c);
+  }
   function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function isEdited(el) { return !!(findEdit(el, 'html') || findEdit(el, 'style') || findEdit(el, 'group') || findEdit(el, 'attrs')); }
   function codeSlide() {   // the slide on screen wins: a followed element whose slide left the screen is dropped
@@ -1442,8 +1488,8 @@
   function renderTree() {
     if (!code || code.hidden) return;
     var slide = codeSlide(); codeSlideEl = slide;
-    code.querySelector('.nbg-ct').textContent = slide ? 'Slide ' + (slideIndex(slide) + 1) : 'Slide';
-    if (!slide) { codeTree.innerHTML = '<div class="nbg-tr">No slide found.</div>'; return; }
+    code.querySelector('.nbg-ct').textContent = slide ? unitLabel(slide) : UNIT;
+    if (!slide) { codeTree.innerHTML = '<div class="nbg-tr">No ' + AREA + ' found.</div>'; return; }
     var keys = selectedKeys(), openKeys = {};
     Object.keys(keys).forEach(function (k) { var el = elByKey(k); while (el && el !== slide) { el = el.parentElement; if (el) openKeys[pathKey(el)] = true; } });
     if (codeEl && codeEl.isConnected) { var e2 = codeEl; while (e2 && e2 !== slide) { e2 = e2.parentElement; if (e2) openKeys[pathKey(e2)] = true; } }
@@ -1482,18 +1528,18 @@
       '<span class="nbg-ol">' + esc(label) + '</span>' +
       '<span class="nbg-os">' + Math.round(el.offsetWidth) + '×' + Math.round(el.offsetHeight) + '</span>' +
       (g && badges[g] ? '<span class="nbg-og" title="group ' + esc(g) + '">' + badges[g] + '</span>' : '') +
-      (backdrop ? '<span class="nbg-og nbg-ob" title="fills the slide — not part of Select all">backdrop</span>' : '') +
+      (backdrop ? '<span class="nbg-og nbg-ob" title="fills the ' + AREA + ' — not part of Select all">backdrop</span>' : '') +
       (isEdited(el) ? ' <span class="nbg-dot" title="edited in this browser">●</span>' : '') + '</div>');
     if (open || filter) kidRows.forEach(function (r) { out.push(r); });
   }
   function renderOutline() {
     if (!code || code.hidden) return;
     var slide = codeSlide(); codeSlideEl = slide;
-    code.querySelector('.nbg-ct').textContent = slide ? 'Slide ' + (slideIndex(slide) + 1) : 'Slide';
-    if (!slide) { codeOut.innerHTML = '<div class="nbg-tr">No slide found.</div>'; return; }
+    code.querySelector('.nbg-ct').textContent = slide ? unitLabel(slide) : UNIT;
+    if (!slide) { codeOut.innerHTML = '<div class="nbg-tr">No ' + AREA + ' found.</div>'; return; }
     var keys = selectedKeys(), out = [], badges = groupBadges(slide), filter = outFilter.trim().toLowerCase();
     childShapes(slide).forEach(function (el) { renderOutlineNode(el, 0, out, keys, badges, slide, filter); });
-    codeOut.innerHTML = out.length ? out.join('') : '<div class="nbg-tr nbg-tr-text">' + (filter ? 'Nothing matches “' + esc(outFilter) + '”.' : 'No shapes on this slide.') + '</div>';
+    codeOut.innerHTML = out.length ? out.join('') : '<div class="nbg-tr nbg-tr-text">' + (filter ? 'Nothing matches “' + esc(outFilter) + '”.' : 'No shapes on this ' + AREA + '.') + '</div>';
     var cnt = code.querySelector('.nbg-oc'); cnt.textContent = sel.length ? sel.length + ' selected' : '';
     var on = codeOut.querySelector('.nbg-on'); if (on && codeTab === 'outline') on.scrollIntoView({ block: 'nearest' });
   }
@@ -1579,7 +1625,7 @@
     if (r.error) { setRawStatus(r.error, true); return false; }
     rawDirty = false; rawFor = null; codeEl = el;
     setRawStatus(r.n ? 'Applied — ' + changesLabel() + '.' + (r.dropped ? ' Removed ' + r.dropped + ' script / event-handler item' + (r.dropped === 1 ? '' : 's') + '.' : '') : 'No change.');
-    if (r.n) toast('HTML applied to ' + describe(el) + ' — ' + changesLabel() + '. Right-click → “Save edited copy” to download the deck with your changes.', 4000);
+    if (r.n) toast('HTML applied to ' + describe(el) + ' — ' + changesLabel() + '. Right-click → “Save edited copy” to download the ' + WHOLE + ' with your changes.', 4000);
     codeRefresh();
     return r.n > 0;
   }
@@ -1611,19 +1657,19 @@
   function buildCode() {
     code = document.createElement('div');
     code.id = 'nbg-code'; code.className = 'nbg-panel nbg-code'; code.hidden = true;   // shown (and placed) by syncToolbars
-    code.setAttribute('role', 'dialog'); code.setAttribute('aria-label', 'Structure and HTML of the slide');
+    code.setAttribute('role', 'dialog'); code.setAttribute('aria-label', 'Structure and HTML of the ' + AREA);
     code.innerHTML =
-      '<div class="nbg-row nbg-ch"><span class="nbg-ct">Slide</span>' +
-      '<button type="button" data-tab="outline" class="nbg-on" title="The slide’s shapes — cards, text blocks, images — nested by containment: tick the boxes to select several, click a name to select it alone, Shift+click adds, double-click edits its text">Outline</button>' +
-      '<button type="button" data-tab="tree" title="The slide’s HTML elements — click selects one on the slide, Shift+click adds it, double-click edits its text, ▸ expands">Tree</button>' +
+      '<div class="nbg-row nbg-ch"><span class="nbg-ct">' + UNIT + '</span>' +
+      '<button type="button" data-tab="outline" class="nbg-on" title="The ' + AREA + '’s shapes — cards, text blocks, images — nested by containment: tick the boxes to select several, click a name to select it alone, Shift+click adds, double-click edits its text">Outline</button>' +
+      '<button type="button" data-tab="tree" title="The ' + AREA + '’s HTML elements — click selects one on the ' + AREA + ', Shift+click adds it, double-click edits its text, ▸ expands">Tree</button>' +
       '<button type="button" data-tab="code" title="The selected element’s source — edit it and Apply (Ctrl/Cmd+Enter)">Code</button>' +
       '<span class="nbg-cfill"></span>' +
-      '<button type="button" data-c="refresh" class="nbg-tquiet" title="Re-read the slide">↻</button>' +
+      '<button type="button" data-c="refresh" class="nbg-tquiet" title="Re-read the ' + AREA + '">↻</button>' +
       '<button type="button" data-c="detach" class="nbg-tquiet nbg-detach" title="Detach into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the panel back">⧉</button>' +
       '<button type="button" data-c="fold" class="nbg-tquiet nbg-fold" title="Collapse this panel to its header — click again to expand">▾</button>' +
       '<button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc)">✕</button></div>' +
       '<div class="nbg-cb nbg-cout"><div class="nbg-of"><input type="search" class="nbg-oq" placeholder="Filter by text…" aria-label="Filter shapes">' +
-      '<button type="button" data-o="all" class="nbg-tquiet" title="Select every top-level shape of the slide (Ctrl/Cmd+A)">All</button>' +
+      '<button type="button" data-o="all" class="nbg-tquiet" title="Select every top-level shape of the ' + AREA + ' (Ctrl/Cmd+A)">All</button>' +
       '<button type="button" data-o="none" class="nbg-tquiet" title="Clear the selection">None</button><span class="nbg-oc"></span></div><div class="nbg-olist" role="tree"></div></div>' +
       '<div class="nbg-cb nbg-ctree" hidden role="tree"></div>' +
       '<div class="nbg-cb nbg-craw" hidden><div class="nbg-cw"></div><textarea class="nbg-raw" spellcheck="false" wrap="off" aria-label="HTML source of the selected element"></textarea>' +
@@ -1653,7 +1699,7 @@
         if (outline) renderOutline(); else renderTree();
         return;
       }
-      if (el.classList.contains('slide')) return;
+      if (isRoot(el)) return;
       codeEl = el;
       if (e.target.classList.contains('nbg-ock')) { toggleSelection(el); codeRefresh(); return; }            // checkbox: add / remove
       if (e.shiftKey && shape) addToSelection(el); else if ((e.metaKey || e.ctrlKey) && shape) toggleSelection(el); else selectSolo(el, true);
@@ -1689,8 +1735,8 @@
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var nx = rows[Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]; rows.forEach(function (r) { r.classList.remove('nbg-cur'); }); nx.classList.add('nbg-cur'); nx.scrollIntoView({ block: 'nearest' }); hoverEl(elByKey(nx.getAttribute('data-path'))); }
       else if (e.key === 'ArrowRight') { e.preventDefault(); codeClosed.delete(key); codeOpen.add(key); if (codeTab === 'outline') renderOutline(); else renderTree(); markCur(key); }
       else if (e.key === 'ArrowLeft') { e.preventDefault(); codeOpen.delete(key); codeClosed.add(key); if (codeTab === 'outline') renderOutline(); else renderTree(); markCur(key); }
-      else if (e.key === ' ' && codeTab === 'outline' && el && !el.classList.contains('slide')) { e.preventDefault(); codeEl = el; toggleSelection(el); codeRefresh(); markCur(key); }
-      else if (e.key === 'Enter' && el && !el.classList.contains('slide')) { e.preventDefault(); codeEl = el; if (e.shiftKey && shape) addToSelection(el); else selectSolo(el, true); codeRefresh(); }
+      else if (e.key === ' ' && codeTab === 'outline' && el && !isRoot(el)) { e.preventDefault(); codeEl = el; toggleSelection(el); codeRefresh(); markCur(key); }
+      else if (e.key === 'Enter' && el && !isRoot(el)) { e.preventDefault(); codeEl = el; if (e.shiftKey && shape) addToSelection(el); else selectSolo(el, true); codeRefresh(); }
     });
     codeTree.setAttribute('tabindex', '0'); codeOut.setAttribute('tabindex', '0');
     document.body.appendChild(code);
@@ -1704,8 +1750,8 @@
     ui.code = 'on'; uiSave(); syncToolbars();
     if (tab) setTab(tab);
     // "Show structure / HTML" on an element selects it; opening the panel on its own selects nothing
-    if (el && el === codeEl && !shape && !editing && codeEl.isConnected && !codeEl.classList.contains('slide')) selectSolo(codeEl, true);
-    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements; Code: the selected element’s source, editable. The selection is highlighted on the slide and here.', 5000);
+    if (el && el === codeEl && !shape && !editing && codeEl.isConnected && !isRoot(codeEl)) selectSolo(codeEl, true);
+    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements; Code: the selected element’s source, editable. The selection is highlighted on the ' + AREA + ' and here.', 5000);
     return true;
   }
   function openCodePanel() {
@@ -1741,7 +1787,15 @@
   };
   var AI_PROVIDER_ORDER = ['anthropic', 'azure-anthropic', 'openai', 'azure-openai', 'deepseek'];
   // built-in prompts (read-only; "Copy to mine" makes an editable copy). mode: the reply option the prompt pre-selects.
-  var AI_BUILTIN = [
+  var AI_BUILTIN = PAGE_MODE ? [
+    { id: 'b:free', name: 'Free request', mode: '', text: '' },
+    { id: 'b:review', name: 'Review the page', mode: 'answer', text: 'Review this page as an experienced web and content designer. Judge the visual hierarchy, the amount and order of content, alignment and spacing, the consistency of colours and type, readability, and the clarity of the message. Give at most eight findings as a numbered list, most important first; each finding names what to change and how. Do not restate what the page says.' },
+    { id: 'b:proof', name: 'Proofread the text', mode: 'answer', text: 'Proofread every piece of text on this page: spelling, grammar, punctuation, capitalisation, inconsistent wording and terminology, numbers and dates. List each problem as “before → after” with a short reason. Say “No issues found” when there is nothing to fix. Keep the language of the page.' },
+    { id: 'b:copy', name: 'Tighten the copy', mode: 'answer', text: 'Propose tighter, clearer wording for the texts on this page: headings of at most eight words, and body texts that keep every fact but drop filler. Show each text as “current → proposed”. Keep the language, the tone and the meaning.' },
+    { id: 'b:summary', name: 'Summarise the page', mode: 'answer', text: 'Summarise this page in at most eight bullet points, in the language of the page, covering every section in order. End with one sentence naming the page’s purpose and audience.' },
+    { id: 'b:restyle', name: 'Restyle the selection', mode: 'replace', text: 'Change the selected element as the viewer asks in the additional instructions (colours, fill, borders, spacing, size, typography, alignment). Keep its tag, its classes, its id, its images and its text unless the instructions say otherwise. Stay consistent with the page’s existing colours and fonts. Return the complete replacement HTML for the element.' },
+    { id: 'b:rewrite', name: 'Rewrite the selection’s text', mode: 'replace', text: 'Rewrite the text inside the selected element as the viewer asks in the additional instructions (shorter, clearer, a different tone, another language…). Keep the element’s tag, attributes, inline markup structure (spans, line breaks, lists, links) and images; change only the words. Return the complete replacement HTML for the element.' },
+  ] : [
     { id: 'b:free', name: 'Free request', mode: '', text: '' },
     { id: 'b:review', name: 'Review the slide', mode: 'answer', text: 'Review this slide as an experienced presentation designer who knows the NBG design system. Judge the visual hierarchy, the amount of content, alignment and spacing, the consistency of colours and type with the NBG palette and font stacks, and the clarity of the message. Give at most eight findings as a numbered list, most important first; each finding names what to change and how. Do not restate what the slide says.' },
     { id: 'b:proof', name: 'Proofread the text', mode: 'answer', text: 'Proofread every piece of text on this slide: spelling, grammar, punctuation, capitalisation, inconsistent wording and terminology, numbers and dates. List each problem as “before → after” with a short reason. Say “No issues found” when there is nothing to fix. Keep the language of the slide.' },
@@ -1750,7 +1804,10 @@
     { id: 'b:restyle', name: 'Restyle the selection', mode: 'replace', text: 'Change the selected element as the viewer asks in the additional instructions (colours, fill, borders, spacing, size, typography, alignment). Keep its tag, its classes, its id, its images and its text unless the instructions say otherwise. Use the NBG palette and font stacks. Return the complete replacement HTML for the element.' },
     { id: 'b:rewrite', name: 'Rewrite the selection’s text', mode: 'replace', text: 'Rewrite the text inside the selected element as the viewer asks in the additional instructions (shorter, clearer, a different tone, another language…). Keep the element’s tag, attributes, inline markup structure (spans, line breaks, lists) and images; change only the words. Return the complete replacement HTML for the element.' },
   ];
-  var AI_SYSTEM = 'You are assisting a viewer of an HTML slide deck built with the National Bank of Greece (NBG) presentation design system: 1920×1080 slides, the Aptos font stack (Aptos, Inter, Helvetica, Arial), and the NBG palette — deep teal #003841, teal #007B85, bright cyan #00ADBF, electric cyan #00CFE7, black #0A1416, grey #5B6B6D, cream #F5F8F6, white #FFFFFF. ' +
+  var AI_SYSTEM_PAGE = 'You are assisting a viewer who edits an HTML web page in place in the browser. ' +
+    'The viewer’s message may carry, as the viewer chose: a screenshot of the page (or of the current section), the page’s full HTML source with its stylesheet, the HTML source of the element(s) the viewer selected, and an image taken from the viewer’s clipboard. Work with what is attached and do not ask for what is missing. ' +
+    'In the sources, embedded images appear as src="nbg-image:N" (or url(nbg-image:N)) placeholders standing for the original image data — keep such placeholders exactly as they are. Stay consistent with the page’s existing colours, fonts and layout when you propose visual changes.';
+  var AI_SYSTEM = cfgStr('aiSystem') ? cfgStr('aiSystem') : PAGE_MODE ? AI_SYSTEM_PAGE : 'You are assisting a viewer of an HTML slide deck built with the National Bank of Greece (NBG) presentation design system: 1920×1080 slides, the Aptos font stack (Aptos, Inter, Helvetica, Arial), and the NBG palette — deep teal #003841, teal #007B85, bright cyan #00ADBF, electric cyan #00CFE7, black #0A1416, grey #5B6B6D, cream #F5F8F6, white #FFFFFF. ' +
     'The viewer’s message may carry, as the viewer chose: a screenshot of the current slide, the slide’s full HTML source with the deck’s stylesheet, the HTML source of the element(s) the viewer selected, and an image taken from the viewer’s clipboard. Work with what is attached and do not ask for what is missing. ' +
     'In the sources, embedded images appear as src="nbg-image:N" (or url(nbg-image:N)) placeholders standing for the original image data — keep such placeholders exactly as they are. Stay within the NBG palette and font stacks when you propose visual changes.';
   var AI_MODE_TEXT = {
@@ -1891,7 +1948,7 @@
   // the slide's screenshot: tab capture (the browser asks once which tab; the current tab is preferred), our UI hidden, cropped to the slide
   async function aiCaptureSlide(slide) {
     if (aiHooks.capture) return aiHooks.capture(slide);
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('Screen capture is not available in this browser — untick “Screenshot of the slide”.');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) throw new Error('Screen capture is not available in this browser — untick “Screenshot of the ' + AREA + '”.');
     var stream, video = document.createElement('video'), track = null;
     // our UI goes away before the picker opens, so no frame ever shows it; two paints make sure the hidden state is on screen
     document.documentElement.classList.add('nbg-capturing');
@@ -1900,7 +1957,7 @@
       var hiddenAt = performance.now();
       var capWin = isDetached('ai') ? detached.ai : window;   // the click came from the assistant's window: that window holds the user activation
       try { stream = await capWin.navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: capWin === window, selfBrowserSurface: 'include', surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude' }); }
-      catch (e) { throw new Error('The screenshot was not allowed (' + (e && e.message ? e.message : e) + ') — allow the capture of this tab, or untick “Screenshot of the slide”.'); }
+      catch (e) { throw new Error('The screenshot was not allowed (' + (e && e.message ? e.message : e) + ') — allow the capture of this tab, or untick “Screenshot of the ' + AREA + '”.'); }
       track = stream.getVideoTracks()[0];
       video.srcObject = stream; video.muted = true; video.playsInline = true;
       await video.play();
@@ -1989,7 +2046,7 @@
     aiLastReplace = { el: target, before: before };
     if (!shape || sel.indexOf(target) < 0) { if (!editing) selectSolo(target, true); }
     layoutAi();
-    toast('Applied to ' + describe(target) + ' — ' + changesLabel() + '. Undo is in the assistant panel; right-click → “Save edited copy” to download the deck with your changes.', 5000);
+    toast('Applied to ' + describe(target) + ' — ' + changesLabel() + '. Undo is in the assistant panel; right-click → “Save edited copy” to download the ' + WHOLE + ' with your changes.', 5000);
     return r;
   }
   function aiUndo() {
@@ -2001,33 +2058,34 @@
   async function aiSend(opts) {
     if (!ai || aiBusy) return false;
     opts = opts || {};
-    var st = function (m, bad) { aiStatus(m, bad); };
-    var missing = aiCheckSettings(); if (missing) { st(missing, true); setAiView('settings'); return false; }
+    var pop = !!opts.pop;
+    var st = function (m, bad) { aiStatus(m, bad); if (pop) aiPopStatus(m, bad); };
+    var missing = aiCheckSettings(); if (missing) { st(missing, true); if (pop) openAi('settings'); else setAiView('settings'); return false; }
     var prompt = (opts.promptId && aiPromptById(opts.promptId)) || aiCurrentPrompt(), req = typeof opts.request === 'string' ? opts.request.trim() : ai.querySelector('[data-ai=req]').value.trim();
     if (!prompt.text && !req) { st('Type a request, or choose a prompt.', true); return false; }
     var mode = opts.output || aiSettings.output, targets = opts.target ? [opts.target] : aiTargets(), inc = opts.include || aiSettings.include, slide = opts.target ? (slideOf(opts.target) || aiSlide()) : aiSlide();
     var asked = ai.querySelector('[data-ai=asked]');
     if (opts.target) { asked.hidden = false; asked.textContent = (mode === 'replace' ? 'Change requested for ' : 'Asked about ') + describe(opts.target) + ' with “' + prompt.name + '”' + (req ? ': ' + req : ''); } else asked.hidden = true;
     if (mode === 'replace' && targets.length !== 1) { st('“Replace the selected element” needs exactly one selected element — select it (right-click → Resize / move shape, or tick it in the Outline).', true); return false; }
-    aiBusy = true; ai.classList.add('nbg-abusy'); aiSetReply(''); aiLastStore = null;
+    aiBusy = true; ai.classList.add('nbg-abusy'); aiSetReply(''); aiLastStore = null; if (pop) aiPopBusy(true);
     try {
       var store = [], text = '', sizes = [];
       if (prompt.text) text += prompt.text + '\n\n';
       if (req) text += (prompt.text ? 'Additional instructions from the viewer:\n' : '') + req + '\n\n';
       if (targets.length) text += 'The viewer selected ' + (targets.length === 1 ? describe(targets[0]) : targets.length + ' elements') + (mode === 'replace' ? ' and wants it replaced by your reply.' : '.') + '\n\n';
       if (inc.slide && slide) {
-        var src = aiStripData(cleanOuterHtml(slide), store), css = aiDeckCss(slide, store);
-        text += 'Slide ' + (slideIndex(slide) + 1) + ' of ' + document.querySelectorAll('.slide').length + ' — full HTML source:\n' + aiFence('html', src) + '\n\n';
-        if (css) text += 'Deck stylesheet (the rules this slide uses):\n' + aiFence('css', css) + '\n\n';
-        sizes.push('slide source ' + aiKb(src) + ' KB', 'stylesheet ' + aiKb(css) + ' KB');
+        var src = aiStripData(aiSourceHtml(slide), store), css = aiDeckCss(slide, store);
+        text += unitOf(slide) + ' — full HTML source:\n' + aiFence('html', src) + '\n\n';
+        if (css) text += (PAGE_MODE ? 'Page' : 'Deck') + ' stylesheet (the rules this ' + AREA + ' uses):\n' + aiFence('css', css) + '\n\n';
+        sizes.push(AREA + ' source ' + aiKb(src) + ' KB', 'stylesheet ' + aiKb(css) + ' KB');
       }
-      if (inc.sel && targets.length) targets.forEach(function (el, i) { var s2 = aiStripData(cleanOuterHtml(el), store); text += 'Selected element' + (targets.length > 1 ? ' ' + (i + 1) : '') + ' (' + describe(el) + ') — HTML source:\n' + aiFence('html', s2) + '\n\n'; sizes.push('selection ' + aiKb(s2) + ' KB'); });
-      if (text.length > AI_MAX_TEXT) { st('Not sent — the text alone is ' + aiKb(text) + ' KB (' + sizes.join(', ') + '), above the ' + Math.round(AI_MAX_TEXT / 1024) + ' KB limit. Untick “Slide source” or select a smaller element; the sources carry image placeholders already, so this is markup or CSS text.', true); return false; }
+      if (inc.sel && targets.length) targets.forEach(function (el, i) { var s2 = aiStripData(aiSourceHtml(el), store); text += 'Selected element' + (targets.length > 1 ? ' ' + (i + 1) : '') + ' (' + describe(el) + ') — HTML source:\n' + aiFence('html', s2) + '\n\n'; sizes.push('selection ' + aiKb(s2) + ' KB'); });
+      if (text.length > AI_MAX_TEXT) { st('Not sent — the text alone is ' + aiKb(text) + ' KB (' + sizes.join(', ') + '), above the ' + Math.round(AI_MAX_TEXT / 1024) + ' KB limit. Untick “' + AREA_CAP + ' source” or select a smaller element; the sources carry image placeholders already, so this is markup or CSS text.', true); return false; }
       var parts = [];
       if (inc.shot) {
-        st('Capturing the slide…');
+        st('Capturing the ' + AREA + '…');
         var shot = await aiNormaliseImage(await aiCaptureSlide(slide), 1600), sp = aiSplitDataUrl(shot);
-        parts.push({ text: 'Screenshot of the current slide' + (slide ? ' (slide ' + (slideIndex(slide) + 1) + ')' : '') + ':' }); parts.push({ dataUrl: shot, mime: sp.mime, b64: sp.b64 });
+        parts.push({ text: 'Screenshot of the current ' + AREA + (slide ? ' (' + unitPhrase(slide) + ')' : '') + ':' }); parts.push({ dataUrl: shot, mime: sp.mime, b64: sp.b64 });
         sizes.push('screenshot ' + aiKb(shot) + ' KB');
       }
       if (inc.clip && aiClip) { var cp = aiSplitDataUrl(aiClip); parts.push({ text: 'Image from the viewer’s clipboard:' }); parts.push({ dataUrl: aiClip, mime: cp.mime, b64: cp.b64 }); sizes.push('clipboard image ' + aiKb(aiClip) + ' KB'); }
@@ -2039,18 +2097,19 @@
       aiSetReply(reply);
       if (mode === 'replace') {
         var r = aiApplyReply(targets[0], reply, store);
+        if (pop) aiPopReply(reply, !r.error);
         if (r.error) { st('The reply could not be applied: ' + r.error + ' It is shown below — edit the element by hand, or ask again.', true); return false; }
         else st('Applied to ' + describe(targets[0]) + ' — ' + changesLabel() + '.' + (r.dropped ? ' Removed ' + r.dropped + ' script / event-handler item' + (r.dropped === 1 ? '' : 's') + '.' : ''));
-      } else st(reply ? 'Answer received.' : 'The reply was empty.', !reply);
+      } else { if (pop) aiPopReply(reply, false); st(reply ? 'Answer received.' : 'The reply was empty.', !reply); }
       return true;
     } catch (e) { st(aiFriendlyError(e) + (sizes.length ? ' (sent: ' + sizes.join(', ') + ')' : ''), true); return false; }
-    finally { aiBusy = false; if (ai) ai.classList.remove('nbg-abusy'); layoutAi(); }
+    finally { aiBusy = false; if (ai) ai.classList.remove('nbg-abusy'); if (pop) aiPopBusy(false); layoutAi(); }
   }
   async function aiTest() {
     var st = function (m, bad) { var el = ai.querySelector('[data-ai=sstatus]'); el.textContent = m; el.classList.toggle('nbg-bad', !!bad); };
     aiReadSettingsForm(); var missing = aiCheckSettings(); if (missing) { st(missing, true); return false; }
     st('Testing…');
-    try { var t = await aiCall({ system: 'Reply with the single word OK.', parts: [{ text: 'Connection test from the NBG deck assistant.' }] }); st('Connected — the model replied: ' + (t.trim().slice(0, 40) || '(empty)')); return true; }
+    try { var t = await aiCall({ system: 'Reply with the single word OK.', parts: [{ text: 'Connection test from the ' + TITLE + ' assistant.' }] }); st('Connected — the model replied: ' + (t.trim().slice(0, 40) || '(empty)')); return true; }
     catch (e) { st(aiFriendlyError(e), true); return false; }
   }
   function aiStatus(m, bad) { if (!ai) return; var el = ai.querySelector('[data-ai=status]'); el.textContent = m || ''; el.classList.toggle('nbg-bad', !!bad); }
@@ -2102,8 +2161,8 @@
       '<div class="nbg-ahint" data-ai="phint"></div>' +
       '<textarea data-ai="req" rows="4" placeholder="Your request or extra instructions — paste an image here too (Ctrl/Cmd+V)" aria-label="Request"></textarea>' +
       '<div class="nbg-af nbg-ainc"><span class="nbg-al">Attach</span>' +
-      '<label title="A screenshot of the current slide (the browser asks which tab to capture — choose this one; toolbars are hidden and the picture is cropped to the slide)"><input type="checkbox" data-inc="shot">Screenshot of the slide</label>' +
-      '<label title="The slide’s complete HTML source plus the deck’s stylesheet (embedded images replaced by placeholders)"><input type="checkbox" data-inc="slide">Slide source</label>' +
+      '<label title="A screenshot of the current ' + AREA + ' (the browser asks which tab to capture — choose this one; toolbars are hidden and the picture is cropped to the ' + AREA + ')"><input type="checkbox" data-inc="shot">Screenshot of the ' + AREA + '</label>' +
+      '<label title="The ' + AREA + '’s complete HTML source plus the ' + WHOLE + '’s stylesheet (embedded images replaced by placeholders)"><input type="checkbox" data-inc="slide">' + AREA_CAP + ' source</label>' +
       '<label title="The HTML source of the selected element(s)"><input type="checkbox" data-inc="sel">Selected element source</label>' +
       '<label title="An image from your clipboard: paste it (Ctrl/Cmd+V) into the request box, drop a file here, or use “Read clipboard”"><input type="checkbox" data-inc="clip">Clipboard image</label>' +
       '<span class="nbg-aclip"><span class="nbg-athumb" data-ai="thumb"></span><button type="button" data-c="paste" class="nbg-tquiet" title="Read an image from the clipboard (the browser may ask for permission)">Read clipboard</button><button type="button" data-c="clearclip" class="nbg-tquiet" title="Drop the attached image" hidden>✕</button></span></div>' +
@@ -2128,7 +2187,7 @@
       '<span class="nbg-al">Prompt for “Answer me”</span><select data-st="askPrompt" title="The prompt used when the popup asks a question about the element"></select>' +
       '<span class="nbg-al">Prompt for “Replace this element”</span><select data-st="changePrompt" title="The prompt used when the popup requests a change — its reply replaces the element"></select>' +
       '<span class="nbg-al">Attach by default</span><div class="nbg-af">' +
-      '<label><input type="checkbox" data-stinc="shot">Screenshot of the slide</label><label><input type="checkbox" data-stinc="slide">Slide source</label>' +
+      '<label><input type="checkbox" data-stinc="shot">Screenshot of the ' + AREA + '</label><label><input type="checkbox" data-stinc="slide">' + AREA_CAP + ' source</label>' +
       '<label><input type="checkbox" data-stinc="sel">The element’s source</label><label><input type="checkbox" data-stinc="clip">Clipboard image</label></div>' +
       '<div class="nbg-ahint">A request from the popup does not change the choices on the Ask view; its answer appears there, or replaces the element like “Replace the selected element” (Undo in the Ask view).</div></div>' +
       // Settings
@@ -2140,7 +2199,7 @@
       '<span class="nbg-al">API key</span><div class="nbg-af"><input type="password" data-set="key" spellcheck="false" autocomplete="off"><button type="button" data-c="showkey" class="nbg-tquiet">Show</button></div>' +
       '<span class="nbg-al">Remember the key</span><select data-set="keyScope"><option value="browser">In this browser (until you change it)</option><option value="tab">For this tab only</option></select>' +
       '<div class="nbg-af"><button type="button" data-c="std" class="nbg-tquiet" title="Fill in the provider’s standard endpoint and model where there is one">Standard values</button><button type="button" data-c="ssave" class="nbg-tdone">Save</button><button type="button" data-c="test" class="nbg-tquiet" title="Send a one-line test request">Test</button><span class="nbg-as" data-ai="sstatus"></span></div>' +
-      '<div class="nbg-ahint">The key stays in this browser’s storage and is never written into the deck file; the deck talks to the endpoint directly from this page. Providers that do not allow calls from a browser need a gateway that does.</div></div>';
+      '<div class="nbg-ahint">The key stays in this browser’s storage and is never written into the ' + WHOLE + ' file; the ' + WHOLE + ' talks to the endpoint directly from this page. Providers that do not allow calls from a browser need a gateway that does.</div></div>';
     if (aiSettings.pos) panelPos[ai.id] = { left: aiSettings.pos.left, top: aiSettings.pos.top };   // where the viewer left it (placeAi clamps to the viewport)
     makeMovable(ai, placeAi, '.nbg-ch', function (pos) { aiSettings.pos = pos; aiSaveSettings(); });
     ai.querySelector('[data-ai=req]').value = aiSettings.request || '';
@@ -2242,14 +2301,20 @@
       '<textarea data-pop="req" rows="3" placeholder="What do you want to know about it — or what should change? (Ctrl/Cmd+Enter sends)" aria-label="Request"></textarea>' +
       '<div class="nbg-af"><span class="nbg-al">Reply</span><label><input type="radio" name="nbg-pop-out" value="answer" data-pop="out">Answer me</label><label><input type="radio" name="nbg-pop-out" value="replace" data-pop="out">Replace this element</label></div>' +
       '<div class="nbg-af"><span class="nbg-al">Prompt</span><select data-pop="prompt"></select></div>' +
-      '<div class="nbg-af"><span class="nbg-al">Attach</span><label><input type="checkbox" data-popinc="shot">Screenshot</label><label><input type="checkbox" data-popinc="slide">Slide source</label><label><input type="checkbox" data-popinc="sel">This element’s source</label><label><input type="checkbox" data-popinc="clip">Clipboard image</label></div>' +
-      '<div class="nbg-af"><button type="button" data-pop="send" class="nbg-tdone">Send</button><button type="button" data-pop="cancel" class="nbg-tquiet">Cancel</button><span class="nbg-as" data-pop="status"></span></div></div>';
+      '<div class="nbg-af"><span class="nbg-al">Attach</span><label><input type="checkbox" data-popinc="shot">Screenshot</label><label><input type="checkbox" data-popinc="slide">' + AREA_CAP + ' source</label><label><input type="checkbox" data-popinc="sel">This element’s source</label><label><input type="checkbox" data-popinc="clip">Clipboard image</label></div>' +
+      '<div class="nbg-af"><button type="button" data-pop="send" class="nbg-tdone">Send</button><button type="button" data-pop="cancel" class="nbg-tquiet">Cancel</button><span class="nbg-as" data-pop="status"></span></div>' +
+      '<div class="nbg-arh" data-pop="rh" hidden><span class="nbg-al">Answer</span><span class="nbg-cfill"></span><button type="button" data-pop="copy" class="nbg-tquiet" title="Copy the answer">Copy</button><button type="button" data-pop="undo" class="nbg-tquiet" title="Restore the element as it was before the replacement" hidden>Undo</button><button type="button" data-pop="open" class="nbg-tquiet" title="Open the assistant panel with this request and answer">Open in the assistant panel</button></div>' +
+      '<div class="nbg-ar" data-pop="reply" hidden></div></div>';
     aiPop.addEventListener('click', function (e) {
       e.stopPropagation();
       var b = e.target.closest('button'); if (!b) return;
       var c = b.getAttribute('data-pop');
       if (c === 'cancel') closeAiPop(); else if (c === 'send') aiPopSend();
+      else if (c === 'copy') { try { navigator.clipboard.writeText(aiReplyText); aiPopStatus('Answer copied.'); } catch (x) { aiPopStatus('Copy failed — select the text and copy it.', true); } }
+      else if (c === 'undo') { if (aiUndo()) { aiPop.querySelector('[data-pop=undo]').hidden = true; aiPopStatus('Restored — the element is as it was before the replacement.'); } }
+      else if (c === 'open') openAi('ask');
     });
+    makeMovable(aiPop, function () {}, '.nbg-ch');   // stays where the viewer drags it; the header is the drag surface
     aiPop.addEventListener('change', function (e) {
       var t = e.target;
       if (t.getAttribute('data-pop') === 'out') { var s = aiSettings.structure, want = t.value === 'replace' ? s.changePrompt : s.askPrompt; aiPop.querySelector('[data-pop=prompt]').value = aiPromptById(want) ? want : (t.value === 'replace' ? 'b:restyle' : 'b:free'); }
@@ -2263,39 +2328,65 @@
     });
     document.body.appendChild(aiPop);
   }
+  function aiPopWindow() { return aiPop ? aiPop.ownerDocument.defaultView : window; }
   function openAiPop(x, y, el) {
     if (!el || !el.isConnected) return false;
     if (!aiPop) buildAiPop();
+    // the popup lives where the structure panel is: in its detached window when there is one (the
+    // viewer is looking there), else in the deck's document
+    var host = code && detachedPanel(code) ? code.ownerDocument : document;
+    if (aiPop.ownerDocument !== host) {
+      if (host !== document && !host.getElementById('nbg-deck-menu-style')) host.head.appendChild(host.importNode(style, true));
+      host.body.appendChild(aiPop);
+    }
+    var win = host.defaultView;
     aiPopEl = el;
     var s = aiSettings.structure;
-    aiPop.querySelector('[data-pop=title]').textContent = el.classList.contains('slide') ? 'Ask about slide ' + (slideIndex(el) + 1) : 'Ask about ' + describe(el);
+    aiPop.querySelector('[data-pop=title]').textContent = isRoot(el) ? 'Ask about ' + unitPhrase(el) : 'Ask about ' + describe(el);
     var t = hasOwnText(el) ? el.textContent.replace(/\s+/g, ' ').trim() : '';
-    aiPop.querySelector('[data-pop=desc]').textContent = (t ? '“' + (t.length > 90 ? t.slice(0, 87) + '…' : t) + '” — ' : '') + 'the reply appears in the assistant panel, or replaces this element.';
+    aiPop.querySelector('[data-pop=desc]').textContent = (t ? '“' + (t.length > 90 ? t.slice(0, 87) + '…' : t) + '” — ' : '') + 'the reply appears here, or replaces this element.';
     aiPop.querySelector('[data-pop=req]').value = '';
     Array.prototype.forEach.call(aiPop.querySelectorAll('[data-pop=out]'), function (r) { r.checked = r.value === 'answer'; });
     aiPop.querySelector('[data-pop=prompt]').innerHTML = aiPromptOptions(aiPromptById(s.askPrompt) ? s.askPrompt : 'b:free');
     ['shot', 'slide', 'sel', 'clip'].forEach(function (k) { aiPop.querySelector('[data-popinc=' + k + ']').checked = !!s.include[k]; });
-    aiPop.querySelector('[data-pop=status]').textContent = '';
+    aiPopStatus(''); aiPopReply('');
+    aiPop.querySelector('[data-pop=undo]').hidden = true;
     aiPop.hidden = false;
     aiPop.style.left = '0px'; aiPop.style.top = '0px';
     var r = aiPop.getBoundingClientRect();
-    aiPop.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
-    aiPop.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+    aiPop.style.left = Math.max(8, Math.min(x, win.innerWidth - r.width - 8)) + 'px';
+    aiPop.style.top = Math.max(8, Math.min(y, win.innerHeight - r.height - 8)) + 'px';
+    delete panelPos[aiPop.id];   // a new popup opens at the pointer, wherever the previous one was dragged
     hoverEl(el);
     aiPop.querySelector('[data-pop=req]').focus({ preventScroll: true });
     return true;
   }
   function closeAiPop() { if (!aiPop || aiPop.hidden) return false; aiPop.hidden = true; aiPopEl = null; hoverEl(null); return true; }
+  function aiPopStatus(m, bad) { if (!aiPop) return; var el = aiPop.querySelector('[data-pop=status]'); el.textContent = m || ''; el.classList.toggle('nbg-bad', !!bad); }
+  function aiPopReply(t, undoable) {   // the answer inside the popup (the assistant panel gets it too, for later)
+    if (!aiPop) return;
+    var el = aiPop.querySelector('[data-pop=reply]'); el.innerHTML = aiMd(t || ''); el.hidden = !t;
+    aiPop.querySelector('[data-pop=rh]').hidden = !t;
+    aiPop.querySelector('[data-pop=undo]').hidden = !undoable;
+    if (t && !aiPop.hidden) {   // keep the popup inside its window now that it is taller
+      var r = aiPop.getBoundingClientRect(), win = aiPopWindow();
+      if (r.bottom > win.innerHeight - 8) aiPop.style.top = Math.max(8, win.innerHeight - r.height - 8) + 'px';
+    }
+  }
+  function aiPopBusy(on) { if (!aiPop) return; aiPop.classList.toggle('nbg-abusy', !!on); aiPop.querySelector('[data-pop=send]').disabled = !!on; }
   function aiPopSend() {
-    var el = aiPopEl; if (!el || !el.isConnected) { closeAiPop(); return false; }
+    var el = aiPopEl; if (!el || !el.isConnected) { aiPopStatus('This element is no longer on the ' + AREA + '.', true); return false; }
     var req = aiPop.querySelector('[data-pop=req]').value.trim(), mode = aiPop.querySelector('[data-pop=out]:checked').value, promptId = aiPop.querySelector('[data-pop=prompt]').value, p = aiPromptById(promptId);
     var inc = {}; ['shot', 'slide', 'sel', 'clip'].forEach(function (k) { inc[k] = aiPop.querySelector('[data-popinc=' + k + ']').checked; });
     var st = aiPop.querySelector('[data-pop=status]');
     if (!req && !(p && p.text)) { st.textContent = 'Type a request, or choose a prompt with text.'; st.classList.add('nbg-bad'); return false; }
-    closeAiPop();
-    if (!el.classList.contains('slide')) selectSolo(el, true);
-    openAi('ask');
-    return aiSend({ target: el, promptId: promptId, output: mode, include: inc, request: req });
+    if (aiBusy) { aiPopStatus('The assistant is still answering the previous request.', true); return false; }
+    // the popup stays open and shows the status and the reply itself; the assistant panel is built (it
+    // keeps the request and the answer for "Open in the assistant panel") but never shown on its own
+    if (!ai) buildAi();
+    if (!isRoot(el)) selectSolo(el, true);
+    aiPopReply('');
+    return aiSend({ target: el, promptId: promptId, output: mode, include: inc, request: req, pop: true });
   }
   function renderAiPromptSelect() {
     var s = ai.querySelector('[data-ai=prompt]'), cur = aiCurrentPrompt().id;
@@ -2426,7 +2517,7 @@
     }
     var d = w.document;
     if (!d.body) { d.open(); d.write('<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>'); d.close(); d = w.document; }
-    d.title = 'NBG deck — ' + TOOLBAR_NAMES[k];
+    d.title = TITLE + ' — ' + TOOLBAR_NAMES[k];
     if (!d.getElementById('nbg-deck-menu-style')) d.head.appendChild(d.importNode(style, true));
     if (!d.getElementById('nbg-detached-style')) { var x = d.createElement('style'); x.id = 'nbg-detached-style'; x.textContent = DETACHED_CSS; d.head.appendChild(x); }
     panel.style.left = ''; panel.style.top = ''; panel.style.width = ''; panel.style.height = '';
@@ -2445,6 +2536,7 @@
     detached[k] = null;
     if (!panel) return false;
     if (panel.ownerDocument !== document) document.body.appendChild(panel);
+    if (k === 'code' && aiPop && aiPop.ownerDocument !== document) { aiPop.hidden = true; aiPopEl = null; document.body.appendChild(aiPop); }   // the row popup came along
     panel.classList.remove('nbg-detached');
     if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } }
     if (k === 'ai') aiApplySize();
@@ -2462,13 +2554,13 @@
     toast('All edits discarded.', 2500);
   }
   // per-slide discard: the records whose element lives inside that slide
-  function slideIndex(slide) { return Array.prototype.indexOf.call(document.querySelectorAll('.slide'), slide); }
+  function slideIndex(slide) { return allRoots().indexOf(slide); }
   function editsIn(slide) { return edits.filter(function (ed) { var el = elAt(document, ed.path); return !!el && slide.contains(el); }); }
   function slideAtPoint(x, y) {   // the slide under a point, else the one at the viewport centre, else the first visible one
     var hit = null;
-    document.elementsFromPoint(x, y).forEach(function (n) { if (!hit && !n.closest(OURS)) hit = n.closest('.slide'); });
-    if (!hit) { var c = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2); hit = c && c.closest ? c.closest('.slide') : null; }
-    return hit || Array.prototype.filter.call(document.querySelectorAll('.slide'), function (sl) { return sl.offsetWidth > 0; })[0] || null;
+    document.elementsFromPoint(x, y).forEach(function (n) { if (!hit && !n.closest(OURS)) hit = rootOf(n); });
+    if (!hit) { var c = document.elementFromPoint(window.innerWidth / 2, window.innerHeight / 2); hit = c ? rootOf(c) : null; }
+    return hit || allRoots().filter(function (sl) { return sl.offsetWidth > 0; })[0] || null;
   }
   function discardSlideEdits(slide) {
     if (!slide) return 0;
@@ -2477,8 +2569,7 @@
     var mine = editsIn(slide);
     for (var i = mine.length - 1; i >= 0; i--) { var el = elAt(document, mine[i].path); if (el) apply(el, mine[i].kind, mine[i].original); }
     edits = edits.filter(function (ed) { return mine.indexOf(ed) < 0; }); store();
-    var no = slideIndex(slide) + 1;
-    toast(mine.length ? 'Slide ' + no + ': ' + mine.length + ' change' + (mine.length === 1 ? '' : 's') + ' discarded' + (edits.length ? ' — ' + changesLabel() + ' left on other slides.' : '.') : 'No changes on slide ' + no + '.', 3000);
+    toast(mine.length ? unitLabel(slide) + ': ' + mine.length + ' change' + (mine.length === 1 ? '' : 's') + ' discarded' + (edits.length ? ' — ' + changesLabel() + ' left on other ' + UNIT.toLowerCase() + 's.' : '.') : 'No changes on ' + unitPhrase(slide) + '.', 3000);
     return mine.length;
   }
   /* the deck's own navigation: a selection that left the screen is dropped and the toolbars adapt */
@@ -2491,7 +2582,7 @@
   function onDeckChange() {
     if (busy) return;
     if (editing && slideOffscreen(editing.el)) commitEdit();
-    if (shape && slideOffscreen(shape.el)) { deselectShape(); toast('The slide changed — selection cleared.', 1500); }
+    if (shape && slideOffscreen(shape.el)) { deselectShape(); toast('The ' + AREA + ' changed — selection cleared.', 1500); }
     var vis = slideAtPoint(window.innerWidth / 2, window.innerHeight / 2);
     if (vis !== lastSlide) { lastSlide = vis; syncToolbars(); codeRefresh(); }
   }
@@ -2511,7 +2602,7 @@
       var el = elAt(doc, ed.path);
       if (!el || current(el, ed.kind) !== ed.original) {
         // fallback: a unique element with the same tag and original markup
-        var same = Array.prototype.filter.call(doc.querySelectorAll('.slide ' + (el ? el.tagName : '*')), function (c) { return current(c, ed.kind) === ed.original && (ed.kind === 'style' ? c.innerHTML === (el ? el.innerHTML : c.innerHTML) : true); });
+        var same = Array.prototype.filter.call(doc.querySelectorAll(rootScoped(el ? el.tagName : '*')), function (c) { return current(c, ed.kind) === ed.original && (ed.kind === 'style' ? c.innerHTML === (el ? el.innerHTML : c.innerHTML) : true); });
         el = same.length === 1 ? same[0] : null;
       }
       if (el) { apply(el, ed.kind, ed.value); applied++; } else skipped++;
@@ -2520,7 +2611,7 @@
   }
   function saveEditedCopy() {
     var r = buildEditedHtml();
-    var name = decodeURIComponent((location.pathname.split('/').pop() || 'deck.html')).replace(/\.html?$/i, '') + '-edited.html';
+    var name = decodeURIComponent((location.pathname.split('/').pop() || WHOLE + '.html')).replace(/\.html?$/i, '') + '-edited.html';
     var blob = new Blob([r.html], { type: 'text/html' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -2531,8 +2622,27 @@
 
   /* ---------- print orchestration ---------- */
   var busy = false, preparedByMenu = false;
-  function prepare(opts) { if (editing) commitEdit(); deselectShape(); return nbgPreparePrintLayout(opts || {}); }
-  function restore() { return nbgRestorePrintLayout(); }
+  // page mode: no artboard layout — the browser paginates the page itself; backgrounds are kept and
+  // animations frozen (our panels are already hidden by the @media print rule)
+  var pageStyle = null;
+  function preparePagePrint() {
+    var diag = { slides: allRoots().length, page: null, forcedDisplay: 0, hiddenElements: 0, ancestors: 0, sizeMismatch: [], notes: ['page mode: the browser paginates'] };
+    if (!pageStyle) {
+      pageStyle = document.createElement('style'); pageStyle.id = 'nbg-pdf-style';
+      pageStyle.textContent = '*, *::before, *::after { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important;' +
+        ' animation-duration:0s !important; animation-delay:0s !important; animation-fill-mode:forwards !important; transition-duration:0s !important; transition-delay:0s !important; }\n';
+      document.head.appendChild(pageStyle);
+    }
+    return Promise.resolve(diag);
+  }
+  function restorePagePrint() { if (!pageStyle) return false; if (pageStyle.parentNode) pageStyle.parentNode.removeChild(pageStyle); pageStyle = null; return true; }
+  function prepare(opts) {
+    if (editing) commitEdit(); deselectShape();
+    if (PAGE_MODE) return preparePagePrint();
+    opts = opts || {}; if (!opts.selector) opts.selector = ROOT_SEL;
+    return nbgPreparePrintLayout(opts);
+  }
+  function restore() { return PAGE_MODE ? restorePagePrint() : nbgRestorePrintLayout(); }
   function external() { return !!window.__nbgPdfExternal; }
 
   async function exportPdf() {
@@ -2541,7 +2651,7 @@
     closeMenu();
     try {
       var diag = await prepare();
-      if (!diag.slides) { toast('No slides found — nothing to export.', 4000); preparedByMenu = false; busy = false; restore(); return; }
+      if (!diag.slides) { toast('No ' + UNIT.toLowerCase() + 's found — nothing to export.', 4000); preparedByMenu = false; busy = false; restore(); return; }
       window.print();
     } catch (e) {
       preparedByMenu = false; busy = false; restore();
@@ -2575,6 +2685,7 @@
     '#nbg-deck-menu .nbg-head{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;font-size:11px;letter-spacing:.12em;' +
     'text-transform:uppercase;color:' + ACCENT + ';opacity:.85}' +
     '#nbg-deck-menu .nbg-head i{display:inline-block;width:18px;height:3px;background:' + CYAN + ';border-radius:2px}' +
+    '#nbg-deck-menu.nbg-pinned .nbg-head{cursor:move;touch-action:none}' +
     '#nbg-deck-menu button.nbg-pin{display:inline-block;width:auto;margin-left:auto;padding:2px 7px;font-size:13px;line-height:1.2;opacity:.5;border-radius:6px;filter:grayscale(1)}#nbg-deck-menu button.nbg-pin:hover{opacity:.85}#nbg-deck-menu button.nbg-pin.nbg-pin-on{opacity:1;filter:none;background:rgba(0,173,191,.18)}' +
     '#nbg-deck-menu button.nbg-subbtn{padding:8px 10px 2px;border-radius:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + '}#nbg-deck-menu button.nbg-subbtn:hover{background:transparent;color:' + ACCENT + '}#nbg-deck-menu button.nbg-subbtn span{display:inline;margin:0 0 0 8px;font-size:11px;letter-spacing:0;text-transform:none;color:' + MUTED + '}' +
     '#nbg-deck-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;' +
@@ -2651,7 +2762,7 @@
     '.nbg-code .nbg-cb::-webkit-scrollbar-thumb,.nbg-ai .nbg-ar pre::-webkit-scrollbar-thumb{background:rgba(0,56,65,.28);border-radius:5px;border:2px solid #fff}.nbg-code .nbg-cb::-webkit-scrollbar-thumb:hover{background:rgba(0,56,65,.45)}' +
     '.nbg-code .nbg-cb{scrollbar-width:thin;scrollbar-color:rgba(0,56,65,.35) transparent}' +
     '.nbg-panel.nbg-folded{height:auto!important;min-height:0!important;resize:none}.nbg-panel.nbg-folded .nbg-cb,.nbg-panel.nbg-folded .nbg-ab{display:none!important}.nbg-panel .nbg-fold{min-width:24px}' +
-    '.nbg-panel.nbg-aipop{width:380px;height:auto;min-height:0;resize:none;z-index:2147483647}.nbg-aipop .nbg-ab{overflow:visible}.nbg-aipop textarea{min-height:56px}' +
+    '.nbg-panel.nbg-aipop{width:380px;height:auto;min-height:0;resize:none;z-index:2147483647}.nbg-aipop .nbg-ab{overflow:visible}.nbg-aipop textarea{min-height:56px}.nbg-aipop .nbg-ar{max-height:40vh;overflow:auto}.nbg-aipop.nbg-abusy [data-pop=send]{opacity:.5}' +
     '.nbg-panel .nbg-grip{cursor:grab;color:' + MUTED + ';padding:0 4px;letter-spacing:-2px;font-size:14px;line-height:28px;touch-action:none}.nbg-panel .nbg-grip:active{cursor:grabbing}' +
     '.nbg-panel button{border:0;background:transparent;color:inherit;font:inherit;min-width:28px;height:28px;padding:0 6px;border-radius:6px;cursor:pointer;line-height:28px}' +
     '.nbg-panel button:hover{background:' + CREAM + '}.nbg-panel button.nbg-on{background:' + ACCENT + ';color:#fff}' +
@@ -2674,19 +2785,21 @@
     '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-sel-marks,#nbg-marquee,#nbg-hover,.nbg-panel{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
   document.head.appendChild(style);
 
-  var menu = null, menuTarget = null, menuShape = null, menuStack = [], menuSlide = null, menuPinned = false;   // pinned: stays open after a choice or a click elsewhere
+  var menu = null, menuTarget = null, menuShape = null, menuStack = [], menuSlide = null, menuPinned = false;   // pinned: stays open after a choice or a click elsewhere, movable by its header, keeps its place
+  var menuDrag = null;
   function item(action, label, hint, cls) {
     return '<button type="button" role="menuitem" data-action="' + action + '"' + (cls ? ' class="' + cls + '"' : '') + '><b>' + label + '</b>' + (hint ? '<span>' + hint + '</span>' : '') + '</button>';
   }
   function renderMenu() {
-    var h = '<div class="nbg-head"><i></i>NBG deck<button type="button" data-action="pin" class="nbg-pin' + (menuPinned ? ' nbg-pin-on' : '') + '" title="' + (menuPinned ? 'Pinned — the menu stays open after a choice or a click elsewhere. Click to unpin; Esc or Cancel closes it.' : 'Pin the menu: keep it open after a choice or a click elsewhere (Esc or Cancel still closes it).') + '">📌</button></div>';
+    var h = '<div class="nbg-head"><i></i>' + esc(TITLE) + '<button type="button" data-action="pin" class="nbg-pin' + (menuPinned ? ' nbg-pin-on' : '') + '" title="' + (menuPinned ? 'Pinned — the menu stays open after a choice or a click elsewhere and keeps its place; drag this header to move it. Click to unpin; Esc or Cancel closes it.' : 'Pin the menu: keep it open after a choice or a click elsewhere, and drag it by its header (Esc or Cancel still closes it).') + '">📌</button></div>';
+    menu.classList.toggle('nbg-pinned', menuPinned);
     if (menuTarget) h += item('edit', 'Edit text', 'Edit this text in place — Enter applies, Esc cancels. Or double-click any text.');
     if (menuShape) {
       var inSel = sel.indexOf(menuShape) >= 0;
       h += item('shape', 'Resize / move shape', describe(menuShape) + ' — handles resize (Shift keeps proportions), drag moves, arrows nudge, Esc finishes.' + (shape ? '' : ' Shift+click adds more shapes.'));
       if (shape && !inSel) h += item('addsel', 'Add to selection', 'Select this shape together with the ' + sel.length + ' already selected (Shift+click does the same).');
       else if (shape && inSel && sel.length > 1) h += item('rmsel', 'Remove from selection', 'Keep the other ' + (sel.length - 1) + ' selected (Shift+click does the same).', 'nbg-quiet');
-      if (shape) h += item('selall', 'Select all shapes on this slide', 'Ctrl/Cmd+A while a shape is selected; Shift+drag draws a selection box.', 'nbg-quiet');
+      if (shape) h += item('selall', 'Select all shapes on this ' + AREA + '', 'Ctrl/Cmd+A while a shape is selected; Shift+drag draws a selection box.', 'nbg-quiet');
       h += item('front', 'Bring to front', (inSel && sel.length > 1 ? 'The ' + sel.length + ' selected shapes' : 'This shape') + ' above everything else here (Ctrl/Cmd+Shift+]). The toolbar also steps forward / backward, aligns, distributes and groups.', 'nbg-quiet');
       h += item('back', 'Send to back', (inSel && sel.length > 1 ? 'The ' + sel.length + ' selected shapes' : 'This shape') + ' behind everything else here (Ctrl/Cmd+Shift+[).', 'nbg-quiet');
       if (findEdit(menuShape, 'style')) h += item('reset', 'Reset shape', 'Restore this element’s original size, position, order and text formatting.', 'nbg-quiet');
@@ -2706,15 +2819,16 @@
       h += item('tb-' + k, (on ? '☑ ' : '☐ ') + TOOLBAR_NAMES[k], on ? (mode === 'on' ? 'Shown and pinned — follows the selection. Click to hide it.' : 'Shown with the current selection. Click to hide it (it stays hidden until you show it again).') : (mode === 'off' ? 'Hidden by you. Click to show it and keep it visible.' : k === 'code' ? 'Opens on request (Show structure / Show HTML). Click to show it and keep it visible.' : k === 'ai' ? 'Opens on request (Ask the assistant). Click to show it and keep it visible.' : 'Appears with the selection. Click to show it now and keep it visible.'), 'nbg-pick' + (on ? ' nbg-pick-on' : ''));
     });
     if (!ui.menuFold && (ui.text !== 'auto' || ui.shape !== 'auto')) h += item('tb-auto', 'Automatic toolbars', 'Show the text and shape toolbars with the selection again (the default).', 'nbg-quiet');
-    h += item('structure', 'Show structure & HTML', 'One panel, three tabs: the slide’s shapes as an outline (tick boxes to select several), the HTML tree, and the editable source of ' + (menuShape || menuTarget ? describe(menuShape || menuTarget) : 'the selected element') + '. Right-click a row there to ask the assistant about it.', 'nbg-quiet');
-    h += item('ai', 'Ask the assistant', 'Send a request to an AI model with a screenshot of the slide, its source, ' + (menuShape || menuTarget ? 'the source of ' + describe(menuShape || menuTarget) : 'the selected element’s source') + ' and a clipboard image — each optional. The reply is shown, or replaces the selected element (Ctrl/Cmd+Shift+L).', 'nbg-quiet');
-    h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
+    h += item('structure', 'Show structure & HTML', 'One panel, three tabs: the ' + AREA + '’s shapes as an outline (tick boxes to select several), the HTML tree, and the editable source of ' + (menuShape || menuTarget ? describe(menuShape || menuTarget) : 'the selected element') + '. Right-click a row there to ask the assistant about it.', 'nbg-quiet');
+    h += item('ai', 'Ask the assistant', 'Send a request to an AI model with a screenshot of the ' + AREA + ', its source, ' + (menuShape || menuTarget ? 'the source of ' + describe(menuShape || menuTarget) : 'the selected element’s source') + ' and a clipboard image — each optional. The reply is shown, or replaces the selected element (Ctrl/Cmd+Shift+L).', 'nbg-quiet');
+    if (PAGE_MODE) h += item('pdf', 'Print / Save as PDF', 'Opens the print dialog — choose “Save as PDF”. The browser paginates the page; backgrounds are kept and the editor’s panels are hidden.');
+    else h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
     if (edits.length) {
       h += '<div class="nbg-sep"></div>';
-      h += item('save', 'Save edited copy', 'Download this deck with your ' + changesLabel().replace(' unsaved', '') + ' applied (…-edited.html).');
+      h += item('save', 'Save edited copy', 'Download this ' + WHOLE + ' with your ' + changesLabel().replace(' unsaved', '') + ' applied (…-edited.html).');
       var sc = menuSlide ? editsIn(menuSlide).length : 0;
-      if (sc) h += item('discardslide', 'Discard changes on this slide', 'Slide ' + (slideIndex(menuSlide) + 1) + ': restore its ' + sc + ' change' + (sc === 1 ? '' : 's') + ' — text, formatting, size, position, order and groups. The other slides keep theirs.', 'nbg-quiet');
-      h += item('discard', 'Discard edits', 'Restore every original text, size, position, order and group on every slide.', 'nbg-quiet');
+      if (sc && allRoots().length > 1) h += item('discardslide', 'Discard changes on this ' + UNIT.toLowerCase(), unitLabel(menuSlide) + ': restore its ' + sc + ' change' + (sc === 1 ? '' : 's') + ' — text, formatting, size, position, order and groups. The other ' + UNIT.toLowerCase() + 's keep theirs.', 'nbg-quiet');
+      h += item('discard', 'Discard edits', 'Restore every original text, size, position, order and group on ' + (allRoots().length > 1 ? 'every ' + UNIT.toLowerCase() : 'the ' + AREA) + '.', 'nbg-quiet');
     }
     h += '<div class="nbg-sep"></div>' + item('close', 'Cancel', '', 'nbg-quiet');
     menu.innerHTML = h;
@@ -2728,7 +2842,7 @@
       var b = e.target.closest('button'); if (!b) return;
       e.preventDefault(); e.stopPropagation();
       var action = b.getAttribute('data-action'), t = menuTarget, s = menuShape;
-      if (action === 'pin') { menuPinned = !menuPinned; refreshMenu('pin'); toast(menuPinned ? 'Menu pinned — it stays open after a choice or a click elsewhere; Esc or Cancel closes it.' : 'Menu unpinned.', 2500); return; }
+      if (action === 'pin') { menuPinned = !menuPinned; refreshMenu('pin'); toast(menuPinned ? 'Menu pinned — it stays open after a choice or a click elsewhere and keeps its place; drag its header to move it. Esc or Cancel closes it.' : 'Menu unpinned — it follows the pointer again.', 3000); return; }
       if (action === 'tbfold') { ui.menuFold = !ui.menuFold; uiSave(); refreshMenu('tbfold'); return; }
       if (action === 'close') { closeMenu(true); return; }
       if (action === 'pdf') exportPdf();
@@ -2760,6 +2874,21 @@
       else closeMenu();
     });
     menu.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    // pinned: the header drags the menu (the pin button excluded); the header is re-rendered, so delegate from the menu
+    menu.addEventListener('pointerdown', function (e) {
+      if (!menuPinned || e.button !== 0 || !e.target.closest('.nbg-head') || e.target.closest('button')) return;
+      e.preventDefault(); e.stopPropagation();
+      var r = menu.getBoundingClientRect();
+      menuDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
+      try { menu.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+    });
+    menu.addEventListener('pointermove', function (e) {
+      if (!menuDrag || e.pointerId !== menuDrag.id) return;
+      var r = menu.getBoundingClientRect();
+      menu.style.left = Math.max(8, Math.min(e.clientX - menuDrag.dx, window.innerWidth - r.width - 8)) + 'px';   // the same 8 px margin as clampMenu
+      menu.style.top = Math.max(8, Math.min(e.clientY - menuDrag.dy, window.innerHeight - r.height - 8)) + 'px';
+    });
+    ['pointerup', 'pointercancel'].forEach(function (t) { menu.addEventListener(t, function (e) { if (menuDrag && e.pointerId === menuDrag.id) menuDrag = null; }); });
     // hovering (or focusing) an item outlines the element it is about: the stacked shapes, the shape items, the text item
     function menuItemEl(b) {
       var a = b && b.getAttribute('data-action');
@@ -2780,12 +2909,16 @@
     menuSlide = slideAtPoint(x, y);
     menuStack = shapeStack(x, y);
     if (menuShape && menuStack.indexOf(menuShape) < 0) menuStack.unshift(menuShape);
+    var keep = menuPinned && !menu.hidden;   // a pinned menu stays where the viewer put it; its items follow the new target
     renderMenu();
     menu.hidden = false;
-    menu.style.left = '0px'; menu.style.top = '0px';
-    var r = menu.getBoundingClientRect();
-    menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
-    menu.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+    if (keep) clampMenu();
+    else {
+      menu.style.left = '0px'; menu.style.top = '0px';
+      var r = menu.getBoundingClientRect();
+      menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+      menu.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+    }
     var first = menu.querySelector('button[data-action]:not([data-action=pin])'); if (first) first.focus({ preventScroll: true });
   }
   function clampMenu() {
@@ -2843,7 +2976,6 @@
     lastPoint = { x: e.clientX, y: e.clientY };
     if (e.button === 0 && !busy && !editing && (e.shiftKey || e.metaKey || e.ctrlKey) && startSelectGesture(e)) return;
     // a right-click keeps the selection (the menu offers "Add to selection"); a plain click outside ends it
-    if (aiPop && !aiPop.hidden && !aiPop.contains(e.target)) closeAiPop();
     if (shape && e.button !== 2 && !(box && box.contains(e.target)) && !inShapeTools(e.target) && !inCode(e.target) && !inAi(e.target) && !inAiPop(e.target) && !(menu && menu.contains(e.target))) deselectShape();
   }, true);
   document.addEventListener('focusout', function (e) {
@@ -2968,6 +3100,7 @@
       setSource: function (txt) { if (!code) return false; codeRaw.value = txt; rawDirty = true; rawFor = rawFor || codeEl; return true; },
       apply: applyRaw, revert: revertRaw, rowOf: function (el) { return codeTree ? codeTree.querySelector('.nbg-tr[data-path="' + pathKey(el) + '"]:not([data-text])') : null; },
     },
+    config: { mode: PAGE_MODE ? 'page' : 'deck', root: ROOT_SEL, unit: UNIT, title: TITLE }, roots: allRoots,
     resolveTextTarget: resolveTextTarget, resolveShapeTarget: resolveShapeTarget,
   };
   window.nbgPdf = { prepare: prepare, restore: restore, exportPdf: exportPdf, version: VERSION };

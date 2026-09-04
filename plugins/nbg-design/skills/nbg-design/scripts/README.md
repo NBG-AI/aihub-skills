@@ -148,12 +148,25 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   orchestration). The deck stays fully self-contained (~150 KB more).
 - Idempotent: re-running reports `already current`, refreshes a same-version block, or
   upgrades an older one (including the v1.4 `nbg-pdf-menu-script` block). `--remove` strips it.
+- **Configuration (block v11).** Programmatic callers can pass a configuration —
+  `addMenu(html, { mode, root, unit, title, aiSystem })` / `buildMenuBlock(config)` — which the
+  block writes as its first statement, `window.nbgDeckMenuConfig = {...};`, before the library:
+  `root` is the CSS selector of the editable region(s) (default `.slide`, top-level matches only,
+  an invalid selector throws), `mode` is `deck` (default) or `page` (browser pagination on print,
+  page wording, page-oriented assistant prompts), `unit` / `title` relabel the UI, `aiSystem`
+  replaces the assistant's system prompt. `readMenuConfig(html)` reads it back; `already current`
+  means same version *and* same configuration. The CLI has no flags for it: a deck gets the
+  defaults, and re-running this CLI on a configured file replaces the block with the default one.
+  The development workspace's `html-editor` skill is the CLI for arbitrary pages.
 - The menu: NBG-styled panel (white, teal accent, Aptos stack) with *Edit text* (when the
   right-click landed on text), *Resize / move shape* (when it landed on a shape; *Reset shape*
   once that shape was changed), *Export to PDF*, and — once edits exist — *Save edited copy*
   and *Discard edits*, plus *Cancel*. Escape / click outside closes it; arrow keys move; deck
   shortcuts are suppressed while it is open; right-clicking a link or form field keeps the
-  browser's native menu.
+  browser's native menu. 📌 pins it: it then stays open after a choice or a click elsewhere,
+  keeps its place (a right-click elsewhere re-renders it for the new target where it is) and is
+  draggable by its header (`menuDrag`, 8 px margin like `clampMenu`); unpinned, it follows the
+  pointer again.
 - **Edit text** / **double-click**: the whole text block (accent spans inside a title stay
   intact) becomes `contenteditable` with a teal outline; Enter or a click outside applies, Esc
   cancels, Shift+Enter inserts a line break, Ctrl/Cmd+Z undoes. Paste/drop insert plain text
@@ -291,9 +304,16 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   element* (`structure.changePrompt`) and the default attachments (`structure.include`). The popup
   (`#nbg-ai-pop`, `openAiPop(x, y, el)` from the structure panel's `contextmenu` on a `.nbg-tr` row)
   offers the request box, the Answer / Replace radio (which resets the prompt select to the matching
-  default), the prompt, the attachments; `aiPopSend()` closes it, `selectSolo`s the element, opens the
-  Ask view and calls `aiSend({ target, promptId, output, include, request })` — the overrides leave
-  `aiSettings` alone; the Ask view shows a `[data-ai=asked]` note. Both panels fold: `ui.fold = { code,
+  default), the prompt, the attachments; `aiPopSend()` `selectSolo`s the element, builds the assistant
+  panel if needed (without showing it) and calls `aiSend({ target, promptId, output, include, request,
+  pop: true })` — the overrides leave `aiSettings` alone. The popup **stays open** until ✕ / Cancel /
+  Esc (a click outside does not close it; it is movable by its header): the status and the answer are
+  mirrored into it (`aiPopStatus`, `aiPopReply`; Copy, Undo after a replacement, *Open in the assistant
+  panel* → `openAi('ask')`, where the `[data-ai=asked]` note and the same answer wait). The panel opens
+  on its own only when the settings are incomplete (`openAi('settings')`). The source attachments go
+  through `aiSourceHtml(el)`: `cleanOuterHtml` minus `<script>` elements (this editor's own block when the
+  root is the body), `#nbg-deck-menu-style` and the runtime elements — otherwise a page-mode "Page source"
+  weighed 300 KB of editor code and was refused. Both panels fold: `ui.fold = { code,
   ai }` in `nbg-deck-ui:<pathname>`, `setFold()` / `applyFold()`, `.nbg-folded` hides the body and lets
   the height collapse; `toolbars.fold(k, on)` in the API. Tree rows are `width: max-content; min-width:
   100%` so the row highlight spans the scrolled width, and the scroll containers style
