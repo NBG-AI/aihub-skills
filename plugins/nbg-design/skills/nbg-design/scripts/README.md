@@ -287,6 +287,17 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   fences, inline code, bold, italic, headings). *Prompts* — list with Use / Edit / Delete (own) or Copy to mine
   (built-in), an inline editor (name, text, mode). *Settings* — provider (`AI_PROVIDERS`), URL,
   model, API version (Azure OpenAI only), key with Show, key scope, Standard values, Save, Test.
+  *Structure* — `renderAiStructure()`: the prompt for *Answer me* (`structure.askPrompt`), for *Replace this
+  element* (`structure.changePrompt`) and the default attachments (`structure.include`). The popup
+  (`#nbg-ai-pop`, `openAiPop(x, y, el)` from the structure panel's `contextmenu` on a `.nbg-tr` row)
+  offers the request box, the Answer / Replace radio (which resets the prompt select to the matching
+  default), the prompt, the attachments; `aiPopSend()` closes it, `selectSolo`s the element, opens the
+  Ask view and calls `aiSend({ target, promptId, output, include, request })` — the overrides leave
+  `aiSettings` alone; the Ask view shows a `[data-ai=asked]` note. Both panels fold: `ui.fold = { code,
+  ai }` in `nbg-deck-ui:<pathname>`, `setFold()` / `applyFold()`, `.nbg-folded` hides the body and lets
+  the height collapse; `toolbars.fold(k, on)` in the API. Tree rows are `width: max-content; min-width:
+  100%` so the row highlight spans the scrolled width, and the scroll containers style
+  `::-webkit-scrollbar` so the bars are always visible (macOS overlay bars hid them); the panel itself is `flex-wrap: nowrap` — with `wrap`, a column flexbox sizes its line to the widest row and the panel clipped the body, which is why no horizontal scrollbar ever appeared.
   `aiSend()`: `aiCheckSettings()` first (no fallbacks — a missing provider / URL / model / key
   returns a message and opens Settings), then the text (prompt, additional instructions, the slide
   source via `cleanOuterHtml(slide)` + `aiDeckCss(slide, store)` — the rules the slide uses, read from
@@ -321,7 +332,15 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   inline width / height; `aiApplySize()` restores it clamped to the viewport); the request box and the
   settings fields save on `input` (300 ms debounce), selects and checkboxes on `change`. Test hooks: `window.nbgDeck.ai.hooks({ capture, fetch })`
   replace the capture and the network call; `lastRequest()` returns what was built.
-- **Structure / HTML panel** (`#nbg-code`, menu *Show structure* / *Show HTML*, toolbar `</>`,
+- **The menu**: `menuPinned` (📌 in the head, `data-action=pin`) makes `closeMenu()` a re-render
+  (`refreshMenu()`: `renderMenu()`, `clampMenu()`, focus kept) unless `closeMenu(true)` — Cancel and Esc;
+  a pinned menu ignores outside pointerdowns, scrolling and resizing (clamped), and `syncToolbars()`
+  refreshes it so ticks and hints follow the selection; its keyboard handling only applies while the focus
+  is inside it. `ui.menuFold` (per deck) collapses the Toolbars section behind a `nbg-subbtn` header that,
+  collapsed, names the toolbars shown. `menuItemEl(button)` maps an item to its element (stack entry, the
+  shape, the text block) for `pointerover` / `focusin` → `hoverEl()`. *Show structure & HTML* is one item
+  (`data-action=structure`, `openCode(el)` on the panel's current tab).
+- **Structure / HTML panel** (`#nbg-code`, menu *Show structure & HTML*, toolbar `</>`,
   Ctrl/Cmd+Shift+O / H; movable by its grip and by its header row — `makeMovable(panel,
   relayout, '.nbg-ch')` adds the header's empty space and the "Slide N" title as a second drag
   surface while buttons, fields and the tabs keep their own behaviour; resizable; docked right by

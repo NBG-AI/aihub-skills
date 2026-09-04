@@ -141,7 +141,7 @@
   }
 
   /* ---------- target resolution ---------- */
-  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-text-tools, #nbg-shape-tools, #nbg-code, #nbg-ai';
+  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-text-tools, #nbg-shape-tools, #nbg-code, #nbg-ai, #nbg-ai-pop';
   var INLINE = /^(span|a|b|i|em|strong|small|code|sup|sub|mark|u|abbr|time|label|s|q)$/i;
   function hasOwnText(el) {
     for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
@@ -259,8 +259,15 @@
 
   /* ---------- toolbar visibility: 'auto' (with the selection), 'on' (pinned), 'off' (closed by the viewer) ---------- */
   var UI_KEY = 'nbg-deck-ui:' + location.pathname;
-  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto' };   // code / ai: 'auto' = opens on request only
-  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); } catch (e) { /* storage unavailable */ }
+  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false };   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
+  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; } } catch (e) { /* storage unavailable */ }
+  // the structure and assistant panels collapse to their header row (the ▾ / ▸ button); remembered per deck
+  function applyFold(k) {
+    var panel = k === 'code' ? code : ai; if (!panel) return;
+    var on = !!ui.fold[k]; panel.classList.toggle('nbg-folded', on);
+    var b = panel.querySelector('[data-c=fold]'); if (b) { b.textContent = on ? '▸' : '▾'; b.title = on ? 'Expand this panel' : 'Collapse this panel to its header — click again to expand'; }
+  }
+  function setFold(k, on) { ui.fold[k] = !!on; uiSave(); applyFold(k); if (k === 'code' && code && !code.hidden) placeCode(); if (k === 'ai' && ai && !ai.hidden) placeAi(); }
   function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ignore */ } }
   var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML', ai: 'AI assistant' };
   function textTargets() { return editing ? [editing.el] : sel.filter(hasOwnText); }   // what the text toolbar works on
@@ -281,6 +288,7 @@
     if (toolbarWanted('code')) { if (!code) buildCode(); if (code.hidden) openCodePanel(); } else if (code && !code.hidden) closeCodePanel();
     if (toolbarWanted('ai')) { if (!ai) buildAi(); if (ai.hidden) openAiPanel(); } else if (ai && !ai.hidden) closeAiPanel();
     layoutTools(); layoutShapeTools(); layoutAi();
+    if (menuPinned && menu && !menu.hidden) refreshMenu();
   }
 
   /* ---------- text editing ---------- */
@@ -1598,6 +1606,7 @@
       '<button type="button" data-tab="code" title="The selected element’s source — edit it and Apply (Ctrl/Cmd+Enter)">Code</button>' +
       '<span class="nbg-cfill"></span>' +
       '<button type="button" data-c="refresh" class="nbg-tquiet" title="Re-read the slide">↻</button>' +
+      '<button type="button" data-c="fold" class="nbg-tquiet nbg-fold" title="Collapse this panel to its header — click again to expand">▾</button>' +
       '<button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc)">✕</button></div>' +
       '<div class="nbg-cb nbg-cout"><div class="nbg-of"><input type="search" class="nbg-oq" placeholder="Filter by text…" aria-label="Filter shapes">' +
       '<button type="button" data-o="all" class="nbg-tquiet" title="Select every top-level shape of the slide (Ctrl/Cmd+A)">All</button>' +
@@ -1616,7 +1625,7 @@
       if (b && b.hasAttribute('data-tab')) { setTab(b.getAttribute('data-tab')); return; }
       if (b && b.hasAttribute('data-c')) {
         var c = b.getAttribute('data-c');
-        if (c === 'close') closeCode(); else if (c === 'refresh') codeRefresh(); else if (c === 'apply') applyRaw(); else if (c === 'revert') revertRaw();
+        if (c === 'close') closeCode(); else if (c === 'refresh') codeRefresh(); else if (c === 'fold') setFold('code', !ui.fold.code); else if (c === 'apply') applyRaw(); else if (c === 'revert') revertRaw();
         else if (c === 'copy') { try { navigator.clipboard.writeText(codeRaw.value); setRawStatus('Copied.'); } catch (x) { codeRaw.select(); document.execCommand('copy'); setRawStatus('Copied.'); } }
         return;
       }
@@ -1645,7 +1654,13 @@
     code.addEventListener('pointerover', function (e) { var row = e.target.closest('.nbg-tr'); hoverEl(row ? elByKey(row.getAttribute('data-path')) : null); });
     code.addEventListener('pointerleave', function () { hoverEl(null); });
     code.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
-    code.addEventListener('contextmenu', function (e) { if (!e.target.closest('textarea')) { e.preventDefault(); e.stopPropagation(); } });
+    code.addEventListener('contextmenu', function (e) {   // a row in the Outline or Tree: ask the assistant about that element, or have it changed
+      if (e.target.closest('textarea, input')) return;
+      e.preventDefault(); e.stopPropagation();
+      var row = e.target.closest('.nbg-tr'); if (!row) return;
+      var el = elByKey(row.getAttribute('data-path')); if (!el) return;
+      openAiPop(e.clientX, e.clientY, el);
+    });
     codeRaw.addEventListener('input', function () { rawDirty = true; rawFor = rawFor || codeEl; setRawStatus('Modified — Apply (Ctrl/Cmd+Enter) or Revert.'); });
     code.addEventListener('keydown', function (e) {
       e.stopPropagation();
@@ -1665,6 +1680,7 @@
     });
     codeTree.setAttribute('tabindex', '0'); codeOut.setAttribute('tabindex', '0');
     document.body.appendChild(code);
+    applyFold('code');
   }
   function markCur(key) { var r = (codeTab === 'outline' ? codeOut : codeTree).querySelector('.nbg-tr[data-path="' + key + '"]'); if (r) r.classList.add('nbg-cur'); }
   function openCode(el, tab) {
@@ -1732,7 +1748,7 @@
   // reply choice, the view, the request text, and the panel's position and size
   // url / model / apiVersion / keyScope are the active provider's; every provider keeps its own copy in `profiles`
   // (and its own key under nbg-deck-ai-key:<provider>), so switching providers brings the earlier entries back
-  var aiSettings = { provider: '', url: '', model: '', apiVersion: '', keyScope: 'browser', profiles: {}, promptId: 'b:free', output: 'answer', include: { shot: true, slide: true, sel: true, clip: true }, view: 'ask', request: '', pos: null, size: null };
+  var aiSettings = { provider: '', url: '', model: '', apiVersion: '', keyScope: 'browser', profiles: {}, promptId: 'b:free', output: 'answer', include: { shot: true, slide: true, sel: true, clip: true }, view: 'ask', request: '', pos: null, size: null, structure: { askPrompt: 'b:free', changePrompt: 'b:restyle', include: { shot: false, slide: true, sel: true, clip: false } } };
   function aiProfileOf(o) { if (!o || typeof o !== 'object') return null; var p = { url: '', model: '', apiVersion: '', keyScope: 'browser' }; ['url', 'model', 'apiVersion'].forEach(function (k) { if (typeof o[k] === 'string') p[k] = o[k]; }); if (o.keyScope === 'tab' || o.keyScope === 'browser') p.keyScope = o.keyScope; return p; }
   function aiSyncProfile() { if (AI_PROVIDERS[aiSettings.provider]) aiSettings.profiles[aiSettings.provider] = { url: aiSettings.url, model: aiSettings.model, apiVersion: aiSettings.apiVersion, keyScope: aiSettings.keyScope }; }
   function aiSwitchProvider(p) {   // the current provider's fields stay in its profile; the target's come back (blank when never entered)
@@ -1750,7 +1766,8 @@
     if (typeof s.provider === 'string' && s.provider !== aiSettings.provider) aiSwitchProvider(s.provider);
     ['url', 'model', 'apiVersion', 'promptId', 'output', 'request'].forEach(function (k) { if (typeof s[k] === 'string') aiSettings[k] = s[k]; });
     if (s.keyScope === 'tab' || s.keyScope === 'browser') aiSettings.keyScope = s.keyScope;
-    if (/^(ask|prompts|settings)$/.test(s.view)) aiSettings.view = s.view;
+    if (/^(ask|prompts|structure|settings)$/.test(s.view)) aiSettings.view = s.view;
+    if (s.structure && typeof s.structure === 'object') { ['askPrompt', 'changePrompt'].forEach(function (k) { if (typeof s.structure[k] === 'string') aiSettings.structure[k] = s.structure[k]; }); if (s.structure.include && typeof s.structure.include === 'object') ['shot', 'slide', 'sel', 'clip'].forEach(function (k) { if (typeof s.structure.include[k] === 'boolean') aiSettings.structure.include[k] = s.structure.include[k]; }); }
     if (s.include && typeof s.include === 'object') ['shot', 'slide', 'sel', 'clip'].forEach(function (k) { if (typeof s.include[k] === 'boolean') aiSettings.include[k] = s.include[k]; });
     if ('pos' in s) aiSettings.pos = aiPosOf(s.pos);
     if ('size' in s) aiSettings.size = aiSizeOf(s.size);
@@ -1970,9 +1987,11 @@
     opts = opts || {};
     var st = function (m, bad) { aiStatus(m, bad); };
     var missing = aiCheckSettings(); if (missing) { st(missing, true); setAiView('settings'); return false; }
-    var prompt = aiCurrentPrompt(), req = ai.querySelector('[data-ai=req]').value.trim();
+    var prompt = (opts.promptId && aiPromptById(opts.promptId)) || aiCurrentPrompt(), req = typeof opts.request === 'string' ? opts.request.trim() : ai.querySelector('[data-ai=req]').value.trim();
     if (!prompt.text && !req) { st('Type a request, or choose a prompt.', true); return false; }
-    var mode = aiSettings.output, targets = aiTargets(), inc = aiSettings.include, slide = aiSlide();
+    var mode = opts.output || aiSettings.output, targets = opts.target ? [opts.target] : aiTargets(), inc = opts.include || aiSettings.include, slide = opts.target ? (slideOf(opts.target) || aiSlide()) : aiSlide();
+    var asked = ai.querySelector('[data-ai=asked]');
+    if (opts.target) { asked.hidden = false; asked.textContent = (mode === 'replace' ? 'Change requested for ' : 'Asked about ') + describe(opts.target) + ' with “' + prompt.name + '”' + (req ? ': ' + req : ''); } else asked.hidden = true;
     if (mode === 'replace' && targets.length !== 1) { st('“Replace the selected element” needs exactly one selected element — select it (right-click → Resize / move shape, or tick it in the Outline).', true); return false; }
     aiBusy = true; ai.classList.add('nbg-abusy'); aiSetReply(''); aiLastStore = null;
     try {
@@ -2058,8 +2077,9 @@
       '<div class="nbg-row nbg-ch"><span class="nbg-ct">Assistant</span>' +
       '<button type="button" data-tab="ask" class="nbg-on" title="Ask: a prompt, your instructions, what to attach, and how the reply is used">Ask</button>' +
       '<button type="button" data-tab="prompts" title="Prompts: the built-in ones and your own (add, edit, delete)">Prompts</button>' +
+      '<button type="button" data-tab="structure" title="Structure: how a right-click on a row of the structure panel’s Outline or Tree asks the assistant">Structure</button>' +
       '<button type="button" data-tab="settings" title="Settings: provider, endpoint, model and API key — kept in this browser only">Settings</button>' +
-      '<span class="nbg-cfill"></span><button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc) — right-click → Toolbars shows it again">✕</button></div>' +
+      '<span class="nbg-cfill"></span><button type="button" data-c="fold" class="nbg-tquiet nbg-fold" title="Collapse this panel to its header — click again to expand">▾</button><button type="button" data-c="close" class="nbg-tquiet" title="Close (Esc) — right-click → Toolbars shows it again">✕</button></div>' +
       // Ask
       '<div class="nbg-ab nbg-aask">' +
       '<div class="nbg-af"><span class="nbg-al">Prompt</span><select data-ai="prompt" title="The prompt sent with your request — built-in ones and yours (Prompts tab)"></select></div>' +
@@ -2076,6 +2096,7 @@
       '<label title="The reply must be the replacement HTML of the selected element — it is applied like the Code tab’s Apply (same tag, scripts stripped, recorded as an edit; Undo here, Discard in the menu)"><input type="radio" name="nbg-aout" value="replace" data-out>Replace the selected element</label>' +
       '<span class="nbg-asel" data-ai="selinfo"></span></div>' +
       '<div class="nbg-af"><button type="button" data-c="send" class="nbg-tdone" title="Send (Ctrl/Cmd+Enter in the request box)">Send</button><span class="nbg-as" data-ai="status"></span></div>' +
+      '<div class="nbg-ahint" data-ai="asked" hidden></div>' +
       '<div class="nbg-arh" hidden><span class="nbg-al">Answer</span><span class="nbg-cfill"></span><button type="button" data-c="copy" class="nbg-tquiet" title="Copy the answer">Copy</button><button type="button" data-c="applyreply" class="nbg-tquiet" title="Apply the answer as the replacement HTML of the selected element">Apply to selection</button><button type="button" data-c="undo" class="nbg-tquiet" title="Restore the element as it was before the last replacement" hidden>Undo</button></div>' +
       '<div class="nbg-ar" data-ai="reply" hidden></div></div>' +
       // Prompts
@@ -2085,6 +2106,15 @@
       '<span class="nbg-al">Prompt</span><textarea data-p="text" rows="6" placeholder="What the assistant should do. Your typed request is added as “additional instructions”."></textarea>' +
       '<span class="nbg-al">Reply</span><select data-p="mode"><option value="">Keep the current choice</option><option value="answer">Show the answer</option><option value="replace">Replace the selected element</option></select>' +
       '<div class="nbg-af"><button type="button" data-c="psave" class="nbg-tdone">Save</button><button type="button" data-c="pcancel" class="nbg-tquiet">Cancel</button></div></div></div>' +
+      // Structure: what a right-click on an Outline / Tree row starts with
+      '<div class="nbg-ab nbg-astructure" hidden>' +
+      '<div class="nbg-ahint">Right-click a row in the structure panel’s <b>Outline</b> or <b>Tree</b> to ask the assistant about that element, or to have it changed. The popup starts with these choices; you can change them there each time.</div>' +
+      '<span class="nbg-al">Prompt for “Answer me”</span><select data-st="askPrompt" title="The prompt used when the popup asks a question about the element"></select>' +
+      '<span class="nbg-al">Prompt for “Replace this element”</span><select data-st="changePrompt" title="The prompt used when the popup requests a change — its reply replaces the element"></select>' +
+      '<span class="nbg-al">Attach by default</span><div class="nbg-af">' +
+      '<label><input type="checkbox" data-stinc="shot">Screenshot of the slide</label><label><input type="checkbox" data-stinc="slide">Slide source</label>' +
+      '<label><input type="checkbox" data-stinc="sel">The element’s source</label><label><input type="checkbox" data-stinc="clip">Clipboard image</label></div>' +
+      '<div class="nbg-ahint">A request from the popup does not change the choices on the Ask view; its answer appears there, or replaces the element like “Replace the selected element” (Undo in the Ask view).</div></div>' +
       // Settings
       '<div class="nbg-ab nbg-asettings" hidden>' +
       '<span class="nbg-al">Provider</span><select data-set="provider"><option value="">Choose…</option>' + AI_PROVIDER_ORDER.map(function (k) { return aiOpt(k, AI_PROVIDERS[k].name, ''); }).join('') + '</select>' +
@@ -2111,6 +2141,7 @@
       if (b.hasAttribute('data-tab')) { setAiView(b.getAttribute('data-tab')); return; }
       var c = b.getAttribute('data-c'); if (!c) return;
       if (c === 'close') closeAi();
+      else if (c === 'fold') setFold('ai', !ui.fold.ai);
       else if (c === 'send') aiSend();
       else if (c === 'paste') aiReadClipboard();
       else if (c === 'clearclip') { aiClip = null; layoutAi(); aiStatus('Image dropped.'); }
@@ -2131,6 +2162,8 @@
       if (t.hasAttribute('data-inc')) { aiSettings.include[t.getAttribute('data-inc')] = t.checked; aiSaveSettings(); }
       else if (t.hasAttribute('data-out')) { aiSettings.output = t.value; aiSaveSettings(); layoutAi(); }
       else if (t.getAttribute('data-ai') === 'prompt') aiSelectPrompt(t.value);
+      else if (t.hasAttribute('data-st')) { if (aiPromptById(t.value)) aiSettings.structure[t.getAttribute('data-st')] = t.value; aiSaveSettings(); }
+      else if (t.hasAttribute('data-stinc')) { aiSettings.structure.include[t.getAttribute('data-stinc')] = t.checked; aiSaveSettings(); }
       else if (t.getAttribute('data-set') === 'provider') { var np = t.value, had = !!(aiSettings.profiles[np] && aiSettings.profiles[np].url); aiSwitchProvider(np); aiSaveSettings(); aiFillSettingsForm(); aiSStatus(AI_PROVIDERS[np] ? (had ? 'Your earlier settings for ' + AI_PROVIDERS[np].name + ' are back.' : 'New provider — enter its endpoint, model and key (they are remembered per provider).') : ''); }
       else if (t.hasAttribute('data-set')) aiReadSettingsForm();
     });
@@ -2151,6 +2184,7 @@
       if (e.key === 'Escape') { e.preventDefault(); if (aiEditing) { aiEditing = null; renderAiPrompts(); } else closeAi(); }
     });
     document.body.appendChild(ai);
+    applyFold('ai');
     aiApplySize();
     if (window.ResizeObserver) new ResizeObserver(function () {   // the corner resize sets inline width / height: remember them
       if (!ai || ai.hidden || !(ai.style.width || ai.style.height)) return;
@@ -2167,13 +2201,88 @@
   function setAiView(v) {
     aiView = v; if (aiSettings.view !== v) { aiSettings.view = v; aiSaveSettings(); }
     Array.prototype.forEach.call(ai.querySelectorAll('[data-tab]'), function (b) { b.classList.toggle('nbg-on', b.getAttribute('data-tab') === v); });
-    ai.querySelector('.nbg-aask').hidden = v !== 'ask'; ai.querySelector('.nbg-aprompts').hidden = v !== 'prompts'; ai.querySelector('.nbg-asettings').hidden = v !== 'settings';
-    if (v === 'prompts') renderAiPrompts(); else if (v === 'settings') aiFillSettingsForm();
+    ai.querySelector('.nbg-aask').hidden = v !== 'ask'; ai.querySelector('.nbg-aprompts').hidden = v !== 'prompts'; ai.querySelector('.nbg-astructure').hidden = v !== 'structure'; ai.querySelector('.nbg-asettings').hidden = v !== 'settings';
+    if (v === 'prompts') renderAiPrompts(); else if (v === 'settings') aiFillSettingsForm(); else if (v === 'structure') renderAiStructure();
     else { var req = ai.querySelector('[data-ai=req]'); if (document.activeElement !== req) req.focus({ preventScroll: true }); }
+  }
+  function aiPromptOptions(cur) { return '<optgroup label="Built-in">' + AI_BUILTIN.map(function (p) { return aiOpt(p.id, p.name, cur); }).join('') + '</optgroup>' + (aiPrompts.length ? '<optgroup label="Mine">' + aiPrompts.map(function (p) { return aiOpt(p.id, p.name, cur); }).join('') + '</optgroup>' : ''); }
+  function renderAiStructure() {
+    var s = aiSettings.structure;
+    ai.querySelector('[data-st=askPrompt]').innerHTML = aiPromptOptions(aiPromptById(s.askPrompt) ? s.askPrompt : 'b:free');
+    ai.querySelector('[data-st=changePrompt]').innerHTML = aiPromptOptions(aiPromptById(s.changePrompt) ? s.changePrompt : 'b:restyle');
+    ['shot', 'slide', 'sel', 'clip'].forEach(function (k) { ai.querySelector('[data-stinc=' + k + ']').checked = !!s.include[k]; });
+  }
+  /* the popup behind a right-click on an Outline / Tree row: the request, answer or replace, the prompt, the attachments */
+  var aiPop = null, aiPopEl = null;
+  function inAiPop(t) { return !!(aiPop && t && aiPop.contains(t)); }
+  function buildAiPop() {
+    aiPop = document.createElement('div');
+    aiPop.id = 'nbg-ai-pop'; aiPop.className = 'nbg-panel nbg-code nbg-ai nbg-aipop'; aiPop.hidden = true;
+    aiPop.setAttribute('role', 'dialog'); aiPop.setAttribute('aria-label', 'Ask the assistant about this element');
+    aiPop.innerHTML =
+      '<div class="nbg-row nbg-ch"><span class="nbg-ct" data-pop="title">Ask the assistant</span><span class="nbg-cfill"></span><button type="button" data-pop="cancel" class="nbg-tquiet" title="Close (Esc)">✕</button></div>' +
+      '<div class="nbg-ab"><div class="nbg-ahint" data-pop="desc"></div>' +
+      '<textarea data-pop="req" rows="3" placeholder="What do you want to know about it — or what should change? (Ctrl/Cmd+Enter sends)" aria-label="Request"></textarea>' +
+      '<div class="nbg-af"><span class="nbg-al">Reply</span><label><input type="radio" name="nbg-pop-out" value="answer" data-pop="out">Answer me</label><label><input type="radio" name="nbg-pop-out" value="replace" data-pop="out">Replace this element</label></div>' +
+      '<div class="nbg-af"><span class="nbg-al">Prompt</span><select data-pop="prompt"></select></div>' +
+      '<div class="nbg-af"><span class="nbg-al">Attach</span><label><input type="checkbox" data-popinc="shot">Screenshot</label><label><input type="checkbox" data-popinc="slide">Slide source</label><label><input type="checkbox" data-popinc="sel">This element’s source</label><label><input type="checkbox" data-popinc="clip">Clipboard image</label></div>' +
+      '<div class="nbg-af"><button type="button" data-pop="send" class="nbg-tdone">Send</button><button type="button" data-pop="cancel" class="nbg-tquiet">Cancel</button><span class="nbg-as" data-pop="status"></span></div></div>';
+    aiPop.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var b = e.target.closest('button'); if (!b) return;
+      var c = b.getAttribute('data-pop');
+      if (c === 'cancel') closeAiPop(); else if (c === 'send') aiPopSend();
+    });
+    aiPop.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t.getAttribute('data-pop') === 'out') { var s = aiSettings.structure, want = t.value === 'replace' ? s.changePrompt : s.askPrompt; aiPop.querySelector('[data-pop=prompt]').value = aiPromptById(want) ? want : (t.value === 'replace' ? 'b:restyle' : 'b:free'); }
+    });
+    aiPop.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+    aiPop.addEventListener('contextmenu', function (e) { if (!e.target.closest('textarea')) { e.preventDefault(); e.stopPropagation(); } });
+    aiPop.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Escape') { e.preventDefault(); closeAiPop(); }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); aiPopSend(); }
+    });
+    document.body.appendChild(aiPop);
+  }
+  function openAiPop(x, y, el) {
+    if (!el || !el.isConnected) return false;
+    if (!aiPop) buildAiPop();
+    aiPopEl = el;
+    var s = aiSettings.structure;
+    aiPop.querySelector('[data-pop=title]').textContent = el.classList.contains('slide') ? 'Ask about slide ' + (slideIndex(el) + 1) : 'Ask about ' + describe(el);
+    var t = hasOwnText(el) ? el.textContent.replace(/\s+/g, ' ').trim() : '';
+    aiPop.querySelector('[data-pop=desc]').textContent = (t ? '“' + (t.length > 90 ? t.slice(0, 87) + '…' : t) + '” — ' : '') + 'the reply appears in the assistant panel, or replaces this element.';
+    aiPop.querySelector('[data-pop=req]').value = '';
+    Array.prototype.forEach.call(aiPop.querySelectorAll('[data-pop=out]'), function (r) { r.checked = r.value === 'answer'; });
+    aiPop.querySelector('[data-pop=prompt]').innerHTML = aiPromptOptions(aiPromptById(s.askPrompt) ? s.askPrompt : 'b:free');
+    ['shot', 'slide', 'sel', 'clip'].forEach(function (k) { aiPop.querySelector('[data-popinc=' + k + ']').checked = !!s.include[k]; });
+    aiPop.querySelector('[data-pop=status]').textContent = '';
+    aiPop.hidden = false;
+    aiPop.style.left = '0px'; aiPop.style.top = '0px';
+    var r = aiPop.getBoundingClientRect();
+    aiPop.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+    aiPop.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+    hoverEl(el);
+    aiPop.querySelector('[data-pop=req]').focus({ preventScroll: true });
+    return true;
+  }
+  function closeAiPop() { if (!aiPop || aiPop.hidden) return false; aiPop.hidden = true; aiPopEl = null; hoverEl(null); return true; }
+  function aiPopSend() {
+    var el = aiPopEl; if (!el || !el.isConnected) { closeAiPop(); return false; }
+    var req = aiPop.querySelector('[data-pop=req]').value.trim(), mode = aiPop.querySelector('[data-pop=out]:checked').value, promptId = aiPop.querySelector('[data-pop=prompt]').value, p = aiPromptById(promptId);
+    var inc = {}; ['shot', 'slide', 'sel', 'clip'].forEach(function (k) { inc[k] = aiPop.querySelector('[data-popinc=' + k + ']').checked; });
+    var st = aiPop.querySelector('[data-pop=status]');
+    if (!req && !(p && p.text)) { st.textContent = 'Type a request, or choose a prompt with text.'; st.classList.add('nbg-bad'); return false; }
+    closeAiPop();
+    if (!el.classList.contains('slide')) selectSolo(el, true);
+    openAi('ask');
+    return aiSend({ target: el, promptId: promptId, output: mode, include: inc, request: req });
   }
   function renderAiPromptSelect() {
     var s = ai.querySelector('[data-ai=prompt]'), cur = aiCurrentPrompt().id;
-    s.innerHTML = '<optgroup label="Built-in">' + AI_BUILTIN.map(function (p) { return aiOpt(p.id, p.name, cur); }).join('') + '</optgroup>' + (aiPrompts.length ? '<optgroup label="Mine">' + aiPrompts.map(function (p) { return aiOpt(p.id, p.name, cur); }).join('') + '</optgroup>' : '');
+    s.innerHTML = aiPromptOptions(cur);
     var p = aiCurrentPrompt(), hint = ai.querySelector('[data-ai=phint]');
     hint.textContent = p.text ? (p.text.length > 160 ? p.text.slice(0, 157) + '…' : p.text) : 'No preset text — only what you type is sent (with the attachments).';
   }
@@ -2209,7 +2318,7 @@
     aiEditing = null; renderAiPrompts(); renderAiPromptSelect(); aiSelectPrompt(r.id);
     return true;
   }
-  function aiUpsertPrompt(p) {
+  function aiUpsertPrompt(p) {   // (the Structure view re-renders its selects when shown)
     var id = p.id && /^u:/.test(p.id) ? p.id : 'u:' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     var rec = { id: id, name: String(p.name || '').trim().slice(0, 40) || 'Prompt', text: String(p.text || ''), mode: /^(answer|replace)$/.test(p.mode) ? p.mode : '' };
     var i = -1; aiPrompts.forEach(function (x, k) { if (x.id === id) i = k; });
@@ -2398,6 +2507,8 @@
     '#nbg-deck-menu .nbg-head{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;font-size:11px;letter-spacing:.12em;' +
     'text-transform:uppercase;color:' + ACCENT + ';opacity:.85}' +
     '#nbg-deck-menu .nbg-head i{display:inline-block;width:18px;height:3px;background:' + CYAN + ';border-radius:2px}' +
+    '#nbg-deck-menu button.nbg-pin{display:inline-block;width:auto;margin-left:auto;padding:2px 7px;font-size:13px;line-height:1.2;opacity:.5;border-radius:6px;filter:grayscale(1)}#nbg-deck-menu button.nbg-pin:hover{opacity:.85}#nbg-deck-menu button.nbg-pin.nbg-pin-on{opacity:1;filter:none;background:rgba(0,173,191,.18)}' +
+    '#nbg-deck-menu button.nbg-subbtn{padding:8px 10px 2px;border-radius:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + '}#nbg-deck-menu button.nbg-subbtn:hover{background:transparent;color:' + ACCENT + '}#nbg-deck-menu button.nbg-subbtn span{display:inline;margin:0 0 0 8px;font-size:11px;letter-spacing:0;text-transform:none;color:' + MUTED + '}' +
     '#nbg-deck-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;' +
     'font:inherit;padding:9px 10px;border-radius:8px;cursor:pointer}' +
     '#nbg-deck-menu button:hover,#nbg-deck-menu button:focus-visible{background:' + CREAM + ';outline:none}' +
@@ -2427,12 +2538,12 @@
     '#nbg-sel-marks div.nbg-primary{outline-style:solid}' +
     '#nbg-marquee{position:fixed;z-index:2147483645;box-sizing:border-box;border:1.5px dashed ' + CYAN + ';background:rgba(0,173,191,.08);pointer-events:none}' +
     '#nbg-hover{position:fixed;z-index:2147483645;box-sizing:border-box;outline:2px dashed ' + CYAN + ';outline-offset:1px;background:rgba(0,173,191,.06);pointer-events:none}' +
-    '.nbg-panel.nbg-code{flex-direction:column;align-items:stretch;gap:0;padding:0;width:460px;height:min(72vh,680px);min-width:300px;min-height:180px;resize:both;overflow:hidden;font-size:12px}' +
+    '.nbg-panel.nbg-code{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:0;padding:0;width:460px;height:min(72vh,680px);min-width:300px;min-height:180px;resize:both;overflow:hidden;font-size:12px}' +
     '.nbg-code .nbg-ch{padding:4px 6px;border-bottom:1px solid rgba(0,56,65,.12);flex-wrap:nowrap}.nbg-code .nbg-ct{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:' + ACCENT + ';margin:0 6px 0 2px;white-space:nowrap}' +
     '.nbg-code .nbg-dragsurface{cursor:move}.nbg-code .nbg-dragsurface button,.nbg-code .nbg-dragsurface input{cursor:pointer}' +
     '.nbg-code .nbg-cfill{flex:1}.nbg-code .nbg-cb{flex:1;min-height:0;overflow:auto;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}' +
     '.nbg-code .nbg-cb[hidden]{display:none!important}.nbg-code .nbg-ctree{padding:4px 0;outline:none}' +
-    '.nbg-code .nbg-tr{white-space:nowrap;padding:1px 8px 1px 4px;cursor:default;color:' + INK + '}.nbg-code .nbg-tr:hover{background:' + CREAM + '}' +
+    '.nbg-code .nbg-tr{white-space:nowrap;padding:1px 8px 1px 4px;cursor:default;color:' + INK + ';width:max-content;min-width:100%;box-sizing:border-box}.nbg-code .nbg-tr:hover{background:' + CREAM + '}' +
     '.nbg-code .nbg-tr.nbg-on{background:' + ACCENT + ';color:#fff}.nbg-code .nbg-tr.nbg-on .nbg-tag,.nbg-code .nbg-tr.nbg-on .nbg-an,.nbg-code .nbg-tr.nbg-on .nbg-av,.nbg-code .nbg-tr.nbg-on .nbg-tx{color:#fff}' +
     '.nbg-code .nbg-tr.nbg-cur{box-shadow:inset 0 0 0 1.5px ' + CYAN + '}.nbg-code .nbg-tr-text{color:' + MUTED + ';font-style:italic}' +
     '.nbg-code .nbg-of{display:flex;align-items:center;gap:4px;padding:4px 6px;border-bottom:1px solid rgba(0,56,65,.10);font:12px ' + FONT + '}.nbg-code .nbg-oq{flex:1;min-width:60px;height:24px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 6px}' +
@@ -2468,6 +2579,11 @@
     '.nbg-panel{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:2px;padding:4px 6px;background:#fff;color:' + INK + ';' +
     'border:1px solid rgba(0,56,65,.14);border-radius:10px;box-shadow:0 10px 28px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:13px/1 ' + FONT + ';user-select:none;-webkit-user-select:none;max-width:calc(100vw - 16px);flex-wrap:wrap}' +
     '.nbg-panel[hidden]{display:none!important}' +
+    '.nbg-code .nbg-cb::-webkit-scrollbar,.nbg-ai .nbg-ar pre::-webkit-scrollbar{width:10px;height:10px}.nbg-code .nbg-cb::-webkit-scrollbar-track,.nbg-ai .nbg-ar pre::-webkit-scrollbar-track{background:transparent}' +
+    '.nbg-code .nbg-cb::-webkit-scrollbar-thumb,.nbg-ai .nbg-ar pre::-webkit-scrollbar-thumb{background:rgba(0,56,65,.28);border-radius:5px;border:2px solid #fff}.nbg-code .nbg-cb::-webkit-scrollbar-thumb:hover{background:rgba(0,56,65,.45)}' +
+    '.nbg-code .nbg-cb{scrollbar-width:thin;scrollbar-color:rgba(0,56,65,.35) transparent}' +
+    '.nbg-panel.nbg-folded{height:auto!important;min-height:0!important;resize:none}.nbg-panel.nbg-folded .nbg-cb,.nbg-panel.nbg-folded .nbg-ab{display:none!important}.nbg-panel .nbg-fold{min-width:24px}' +
+    '.nbg-panel.nbg-aipop{width:380px;height:auto;min-height:0;resize:none;z-index:2147483647}.nbg-aipop .nbg-ab{overflow:visible}.nbg-aipop textarea{min-height:56px}' +
     '.nbg-panel .nbg-grip{cursor:grab;color:' + MUTED + ';padding:0 4px;letter-spacing:-2px;font-size:14px;line-height:28px;touch-action:none}.nbg-panel .nbg-grip:active{cursor:grabbing}' +
     '.nbg-panel button{border:0;background:transparent;color:inherit;font:inherit;min-width:28px;height:28px;padding:0 6px;border-radius:6px;cursor:pointer;line-height:28px}' +
     '.nbg-panel button:hover{background:' + CREAM + '}.nbg-panel button.nbg-on{background:' + ACCENT + ';color:#fff}' +
@@ -2490,12 +2606,12 @@
     '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-sel-marks,#nbg-marquee,#nbg-hover,.nbg-panel{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
   document.head.appendChild(style);
 
-  var menu = null, menuTarget = null, menuShape = null, menuStack = [], menuSlide = null;
+  var menu = null, menuTarget = null, menuShape = null, menuStack = [], menuSlide = null, menuPinned = false;   // pinned: stays open after a choice or a click elsewhere
   function item(action, label, hint, cls) {
     return '<button type="button" role="menuitem" data-action="' + action + '"' + (cls ? ' class="' + cls + '"' : '') + '><b>' + label + '</b>' + (hint ? '<span>' + hint + '</span>' : '') + '</button>';
   }
   function renderMenu() {
-    var h = '<div class="nbg-head"><i></i>NBG deck</div>';
+    var h = '<div class="nbg-head"><i></i>NBG deck<button type="button" data-action="pin" class="nbg-pin' + (menuPinned ? ' nbg-pin-on' : '') + '" title="' + (menuPinned ? 'Pinned — the menu stays open after a choice or a click elsewhere. Click to unpin; Esc or Cancel closes it.' : 'Pin the menu: keep it open after a choice or a click elsewhere (Esc or Cancel still closes it).') + '">📌</button></div>';
     if (menuTarget) h += item('edit', 'Edit text', 'Edit this text in place — Enter applies, Esc cancels. Or double-click any text.');
     if (menuShape) {
       var inSel = sel.indexOf(menuShape) >= 0;
@@ -2515,14 +2631,14 @@
         h += item('pick', (el === menuShape ? '● ' : '○ ') + describe(el), rel + (i === menuStack.length - 1 ? ' · outermost' : '') + ' — click selects it alone, Shift+click adds it', 'nbg-pick' + (el === menuShape ? ' nbg-pick-on' : ''));
       });
     }
-    h += '<div class="nbg-sub">Toolbars</div>';
-    ['text', 'shape', 'code', 'ai'].forEach(function (k) {
+    var shown = ['text', 'shape', 'code', 'ai'].filter(toolbarVisible).map(function (k) { return TOOLBAR_NAMES[k]; });
+    h += '<button type="button" data-action="tbfold" class="nbg-sub nbg-subbtn" title="' + (ui.menuFold ? 'Expand the Toolbars section' : 'Collapse the Toolbars section') + '">' + (ui.menuFold ? '▸' : '▾') + ' Toolbars' + (ui.menuFold ? '<span>' + (shown.length ? shown.join(', ') + ' shown' : 'none shown') + '</span>' : '') + '</button>';
+    if (!ui.menuFold) ['text', 'shape', 'code', 'ai'].forEach(function (k) {
       var on = toolbarVisible(k), mode = ui[k];
       h += item('tb-' + k, (on ? '☑ ' : '☐ ') + TOOLBAR_NAMES[k], on ? (mode === 'on' ? 'Shown and pinned — follows the selection. Click to hide it.' : 'Shown with the current selection. Click to hide it (it stays hidden until you show it again).') : (mode === 'off' ? 'Hidden by you. Click to show it and keep it visible.' : k === 'code' ? 'Opens on request (Show structure / Show HTML). Click to show it and keep it visible.' : k === 'ai' ? 'Opens on request (Ask the assistant). Click to show it and keep it visible.' : 'Appears with the selection. Click to show it now and keep it visible.'), 'nbg-pick' + (on ? ' nbg-pick-on' : ''));
     });
-    if (ui.text !== 'auto' || ui.shape !== 'auto') h += item('tb-auto', 'Automatic toolbars', 'Show the text and shape toolbars with the selection again (the default).', 'nbg-quiet');
-    h += item('outline', 'Show structure', 'The slide’s shapes as an outline — tick boxes to select several, click a name to select one; the selection is highlighted here. Tabs for the HTML tree and the editable source.', 'nbg-quiet');
-    h += item('code', 'Show HTML', (menuShape || menuTarget ? describe(menuShape || menuTarget) + ' in a tree of the slide' : 'A tree of the slide') + ' — click an element there to select it here, and edit its source in the Code tab.', 'nbg-quiet');
+    if (!ui.menuFold && (ui.text !== 'auto' || ui.shape !== 'auto')) h += item('tb-auto', 'Automatic toolbars', 'Show the text and shape toolbars with the selection again (the default).', 'nbg-quiet');
+    h += item('structure', 'Show structure & HTML', 'One panel, three tabs: the slide’s shapes as an outline (tick boxes to select several), the HTML tree, and the editable source of ' + (menuShape || menuTarget ? describe(menuShape || menuTarget) : 'the selected element') + '. Right-click a row there to ask the assistant about it.', 'nbg-quiet');
     h += item('ai', 'Ask the assistant', 'Send a request to an AI model with a screenshot of the slide, its source, ' + (menuShape || menuTarget ? 'the source of ' + describe(menuShape || menuTarget) : 'the selected element’s source') + ' and a clipboard image — each optional. The reply is shown, or replaces the selected element (Ctrl/Cmd+Shift+L).', 'nbg-quiet');
     h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
     if (edits.length) {
@@ -2544,6 +2660,9 @@
       var b = e.target.closest('button'); if (!b) return;
       e.preventDefault(); e.stopPropagation();
       var action = b.getAttribute('data-action'), t = menuTarget, s = menuShape;
+      if (action === 'pin') { menuPinned = !menuPinned; refreshMenu('pin'); toast(menuPinned ? 'Menu pinned — it stays open after a choice or a click elsewhere; Esc or Cancel closes it.' : 'Menu unpinned.', 2500); return; }
+      if (action === 'tbfold') { ui.menuFold = !ui.menuFold; uiSave(); refreshMenu('tbfold'); return; }
+      if (action === 'close') { closeMenu(true); return; }
       if (action === 'pdf') exportPdf();
       else if (action === 'edit') { closeMenu(); startEdit(t, false); }
       else if (action === 'shape') { closeMenu(); selectShape(s); }
@@ -2560,8 +2679,7 @@
       else if (action === 'save') { closeMenu(); saveEditedCopy(); }
       else if (action === 'discard') { closeMenu(); discardEdits(); }
       else if (action === 'discardslide') { var sl = menuSlide; closeMenu(); discardSlideEdits(sl); }
-      else if (action === 'code') { var ce = s || t || menuSlide; closeMenu(); openCode(ce, 'tree'); }
-      else if (action === 'outline') { var oe = s || t || menuSlide; closeMenu(); openCode(oe, 'outline'); }
+      else if (action === 'structure') { var ce = s || t || menuSlide; closeMenu(); openCode(ce); }
       else if (action === 'ai') { var ae = s || t; closeMenu(); if (ae && !shape && !editing && ae.isConnected) selectSolo(ae, true); openAi(); }
       else if (/^tb-(text|shape|code|ai)$/.test(action)) {
         var k = action.slice(3), tbEl = s || t || menuSlide; closeMenu();
@@ -2574,6 +2692,17 @@
       else closeMenu();
     });
     menu.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    // hovering (or focusing) an item outlines the element it is about: the stacked shapes, the shape items, the text item
+    function menuItemEl(b) {
+      var a = b && b.getAttribute('data-action');
+      if (a === 'pick') return menuStack[Array.prototype.indexOf.call(menu.querySelectorAll('[data-action=pick]'), b)] || null;
+      if (/^(shape|front|back|reset|addsel|rmsel|ai)$/.test(a)) return menuShape || menuTarget;
+      if (a === 'edit') return menuTarget;
+      return null;
+    }
+    menu.addEventListener('pointerover', function (e) { hoverEl(menuItemEl(e.target.closest('button'))); });
+    menu.addEventListener('focusin', function (e) { hoverEl(menuItemEl(e.target.closest('button'))); });
+    menu.addEventListener('pointerleave', function () { hoverEl(null); });
     document.body.appendChild(menu);
   }
   function openMenu(x, y, target, shapeTarget) {
@@ -2589,9 +2718,26 @@
     var r = menu.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
     menu.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
-    var first = menu.querySelector('button'); if (first) first.focus({ preventScroll: true });
+    var first = menu.querySelector('button[data-action]:not([data-action=pin])'); if (first) first.focus({ preventScroll: true });
   }
-  function closeMenu() { if (menu && !menu.hidden) { menu.hidden = true; menuTarget = null; menuShape = null; menuStack = []; menuSlide = null; } }
+  function clampMenu() {
+    var r = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) + 'px';
+    menu.style.top = Math.max(8, Math.min(r.top, window.innerHeight - r.height - 8)) + 'px';
+  }
+  function refreshMenu(focusAction) {   // re-render in place (ticks, hints, the pin) and keep the keyboard focus where it was
+    if (!menu || menu.hidden) return;
+    var act = focusAction || (menu.contains(document.activeElement) && document.activeElement.getAttribute('data-action')) || null;
+    renderMenu(); clampMenu();
+    if (act) { var f = menu.querySelector('[data-action="' + act + '"]'); if (f) f.focus({ preventScroll: true }); }
+  }
+  // force: an explicit close (Cancel, Esc) — otherwise a pinned menu refreshes instead of closing
+  function closeMenu(force) {
+    if (!menu || menu.hidden) return;
+    if (menuPinned && !force) { refreshMenu(); return; }
+    hoverEl(null);
+    menu.hidden = true; menuTarget = null; menuShape = null; menuStack = []; menuSlide = null;
+  }
 
   var toastTimer = null;
   function toast(msg, ms) {
@@ -2623,13 +2769,14 @@
   });
   function inTools(t) { return !!(tools && t && tools.contains(t)); }
   document.addEventListener('pointerdown', function (e) {
-    if (menu && !menu.hidden && !menu.contains(e.target)) closeMenu();
+    if (menu && !menu.hidden && !menu.contains(e.target) && !menuPinned) closeMenu();
     if (editing && !editing.el.contains(e.target) && !inTools(e.target) && !(menu && menu.contains(e.target))) commitEdit();
     // Shift+click / Shift+drag (and Ctrl/Cmd+click with a selection) select shapes instead of deselecting
     lastPoint = { x: e.clientX, y: e.clientY };
     if (e.button === 0 && !busy && !editing && (e.shiftKey || e.metaKey || e.ctrlKey) && startSelectGesture(e)) return;
     // a right-click keeps the selection (the menu offers "Add to selection"); a plain click outside ends it
-    if (shape && e.button !== 2 && !(box && box.contains(e.target)) && !inShapeTools(e.target) && !inCode(e.target) && !inAi(e.target) && !(menu && menu.contains(e.target))) deselectShape();
+    if (aiPop && !aiPop.hidden && !aiPop.contains(e.target)) closeAiPop();
+    if (shape && e.button !== 2 && !(box && box.contains(e.target)) && !inShapeTools(e.target) && !inCode(e.target) && !inAi(e.target) && !inAiPop(e.target) && !(menu && menu.contains(e.target))) deselectShape();
   }, true);
   document.addEventListener('focusout', function (e) {
     if (editing && e.target === editing.el && !inTools(e.relatedTarget)) {
@@ -2652,7 +2799,7 @@
   ['keydown', 'keyup', 'keypress'].forEach(function (type) {
     document.addEventListener(type, function (e) {
       if (editing) {
-        if (inTools(e.target) || inCode(e.target) || inAi(e.target)) return;                     // the panels' inputs handle their own keys
+        if (inTools(e.target) || inCode(e.target) || inAi(e.target) || inAiPop(e.target)) return;   // the panels' inputs handle their own keys
         // keep the deck's shortcuts (arrows, space, Home/End…) from firing while typing
         e.stopPropagation();
         if (type !== 'keydown') return;
@@ -2668,8 +2815,8 @@
         }
         return;
       }
-      if (shape && !(menu && !menu.hidden)) {
-        if (inShapeTools(e.target) || inCode(e.target) || inAi(e.target)) return;                // the panels' inputs handle their own keys
+      if (shape && !(menu && !menu.hidden && menu.contains(document.activeElement))) {
+        if (inShapeTools(e.target) || inCode(e.target) || inAi(e.target) || inAiPop(e.target)) return;   // the panels' inputs handle their own keys
         e.stopPropagation();
         if (type !== 'keydown') return;
         var step = e.shiftKey ? 10 : 1, mod2 = e.ctrlKey || e.metaKey;
@@ -2699,10 +2846,10 @@
         else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(0, step, e.altKey); }
         return;
       }
-      if (!menu || menu.hidden) return;
+      if (!menu || menu.hidden || !menu.contains(document.activeElement)) return;
       e.stopPropagation();
       if (type !== 'keydown') return;
-      if (e.key === 'Escape') { e.preventDefault(); closeMenu(); }
+      if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); }
       else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         var items = Array.prototype.slice.call(menu.querySelectorAll('button'));
@@ -2711,8 +2858,8 @@
       }
     }, true);
   });
-  window.addEventListener('resize', closeMenu);
-  window.addEventListener('scroll', closeMenu, true);
+  window.addEventListener('resize', function () { if (menuPinned) { if (menu && !menu.hidden) clampMenu(); } else closeMenu(); });
+  window.addEventListener('scroll', function () { if (!menuPinned) closeMenu(); }, true);
   window.addEventListener('beforeunload', function () { if (editing) commitEdit(); });
 
   loadStored();
@@ -2734,7 +2881,7 @@
       align: alignSelection, distribute: distributeSelection, order: reorder, group: groupSelection, ungroup: ungroupSelection,
       groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes,
     },
-    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES },
+    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; } },
     ai: {
       open: openAi, close: closeAi, isOpen: aiIsOpen, view: function (v) { if (!ai) buildAi(); if (v) setAiView(v); return aiView; },
       send: aiSend, test: aiTest, settings: aiConfigure,
@@ -2744,6 +2891,7 @@
       reply: function () { return aiReplyText; }, apply: function (text, el) { return aiApplyReply(el || aiTargets()[0], text); }, undo: aiUndo,
       capture: function (slide) { return aiCaptureSlide(slide || aiSlide()); }, hooks: function (h) { if (h && typeof h === 'object') { if ('capture' in h) aiHooks.capture = h.capture; if ('fetch' in h) aiHooks.fetch = h.fetch; } return aiHooks; },
       lastRequest: function () { return aiLast; }, providers: AI_PROVIDERS, system: function () { return AI_SYSTEM; }, modes: AI_MODE_TEXT,
+      popup: { open: openAiPop, close: closeAiPop, isOpen: function () { return !!(aiPop && !aiPop.hidden); }, send: aiPopSend, target: function () { return aiPopEl; } },
     },
     code: {
       open: openCode, close: closeCode, isOpen: codeIsOpen, show: function (el) { return openCode(el, 'code'); }, tab: setTab, refresh: codeRefresh,
