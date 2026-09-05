@@ -58,6 +58,10 @@
  * does still acts on the deck; closing the window brings it back. The text toolbar stays attached: it
  * works on the deck window's live text selection.
  *
+ * Anchored toolbars: dragging the text or the shape toolbar anchors it — it opens at that spot from then
+ * on (ui.anchor, per deck), shows ⚓ next to its grip; ⚓ or a double-click on the grip releases it, and it
+ * follows the selection again.
+ *
  * Toolbars (menu "Toolbars" section): each toolbar — text formatting, shape & arrange, structure /
  * HTML — is 'auto' (appears with the selection), 'on' (pinned: stays visible, idle when nothing
  * applies) or 'off' (closed with its ✕ or unticked in the menu; stays hidden until shown again);
@@ -308,8 +312,8 @@
 
   /* ---------- toolbar visibility: 'auto' (with the selection), 'on' (pinned), 'off' (closed by the viewer) ---------- */
   var UI_KEY = 'nbg-deck-ui:' + location.pathname;
-  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false, split: 0.55 };   // split: the Tree tab's share above the source editor   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
-  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; } } catch (e) { /* storage unavailable */ }
+  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false, split: 0.55, anchor: { text: null, shape: null } };   // anchor: where the viewer dragged a toolbar — it opens there until released   // split: the Tree tab's share above the source editor   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
+  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; if (uiStored.anchor && typeof uiStored.anchor === 'object') ['text', 'shape'].forEach(function (k) { var a = uiStored.anchor[k]; if (a && typeof a.left === 'number' && typeof a.top === 'number') ui.anchor[k] = { left: a.left, top: a.top }; }); } } catch (e) { /* storage unavailable */ }
   // the structure and assistant panels collapse to their header row (the ▾ / ▸ button); remembered per deck
   function applyFold(k) {
     return;   // the structure and the assistant live in the menu now — nothing folds
@@ -427,12 +431,32 @@
   var panelPos = {};   // panel id -> { left, top } once the viewer dragged it; cleared by double-clicking the grip
   // dragSurface: an optional selector for a second drag handle (e.g. a panel's header row) — its
   // empty space and labels move the panel, its buttons / fields keep their own behaviour
-  function makeMovable(panel, relayout, dragSurface, onMoved) {   // onMoved(pos | null): after a drag, or when the grip's double-click re-docks the panel
+  // anchorKey ('text' | 'shape'): a dragged toolbar is anchored — it opens at that spot from then on, per deck
+  // (ui.anchor), shows ⚓, and the ⚓ (or the grip's double-click) releases it to follow the selection again
+  function makeMovable(panel, relayout, dragSurface, onMoved, anchorKey) {   // onMoved(pos | null): after a drag, or when the panel is released
     var grip = document.createElement('span');
     grip.className = 'nbg-grip'; grip.textContent = '⋮⋮';
-    grip.title = 'Drag to move this toolbar — double-click to let it follow the selection again';
+    grip.title = anchorKey ? 'Drag to move this toolbar — it then stays anchored there; double-click (or ⚓) to let it follow the selection again' : 'Drag to move this toolbar — double-click to let it follow the selection again';
     var host = panel.querySelector('.nbg-row') || panel;   // a multi-row panel keeps the grip in its first row
     host.insertBefore(grip, host.firstChild);
+    var anchorBtn = null;
+    if (anchorKey) {
+      anchorBtn = document.createElement('button');
+      anchorBtn.type = 'button'; anchorBtn.className = 'nbg-anchor'; anchorBtn.textContent = '⚓'; anchorBtn.hidden = true;
+      anchorBtn.title = 'Anchored here — this toolbar opens at this spot. Click to release it: it follows the selection again.';
+      anchorBtn.setAttribute('aria-label', 'Anchored — click to release');
+      host.insertBefore(anchorBtn, grip.nextSibling);
+      anchorBtn.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      anchorBtn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); setAnchored(null); relayout(); toast('Toolbar released — it follows the selection again.', 2000); });
+    }
+    function setAnchored(pos) {   // pos = { left, top } | null
+      if (pos) panelPos[panel.id] = { left: pos.left, top: pos.top }; else delete panelPos[panel.id];
+      panel.classList.toggle('nbg-anchored', !!pos);
+      if (anchorBtn) anchorBtn.hidden = !pos;
+      if (anchorKey) { ui.anchor[anchorKey] = pos ? { left: pos.left, top: pos.top } : null; uiSave(); }
+      if (onMoved) onMoved(pos ? { left: pos.left, top: pos.top } : null);
+    }
+    if (anchorKey && ui.anchor[anchorKey]) { var a0 = ui.anchor[anchorKey]; panelPos[panel.id] = { left: a0.left, top: a0.top }; panel.classList.add('nbg-anchored'); anchorBtn.hidden = false; }
     var pd = null;
     function down(handle, e) {
       if (detachedPanel(panel)) return;
@@ -440,7 +464,7 @@
       if (e.button !== 0) return;
       e.preventDefault(); e.stopPropagation();
       var r = panel.getBoundingClientRect();
-      pd = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
+      pd = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top, moved: false };
       try { handle.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
     }
     function move(e) {
@@ -448,10 +472,19 @@
       var r = panel.getBoundingClientRect();
       var left = Math.max(0, Math.min(e.clientX - pd.dx, window.innerWidth - r.width));
       var top = Math.max(0, Math.min(e.clientY - pd.dy, window.innerHeight - r.height));
+      if (!pd.moved && panelPos[panel.id] && panelPos[panel.id].left === left && panelPos[panel.id].top === top) return;
+      pd.moved = true;
       panelPos[panel.id] = { left: left, top: top };
       panel.style.left = left + 'px'; panel.style.top = top + 'px';
     }
-    function up(e) { if (pd && e.pointerId === pd.id) { pd = null; if (onMoved) onMoved(panelPos[panel.id] ? { left: panelPos[panel.id].left, top: panelPos[panel.id].top } : null); } }
+    function up(e) {
+      if (!pd || e.pointerId !== pd.id) return;
+      var moved = pd.moved; pd = null;
+      if (!moved) return;
+      var was = anchorKey && panel.classList.contains('nbg-anchored');
+      setAnchored(panelPos[panel.id] || null);
+      if (anchorKey && !was && panelPos[panel.id]) toast('Toolbar anchored here — it opens at this spot from now on. ⚓ (or a double-click on the grip) releases it.', 3000);
+    }
     var handles = [grip].concat(dragSurface ? Array.prototype.slice.call(panel.querySelectorAll(dragSurface)) : []);
     handles.forEach(function (h) {
       h.addEventListener('pointerdown', function (e) { down(h, e); });
@@ -460,7 +493,7 @@
       h.addEventListener('pointercancel', up);
       if (h !== grip) h.classList.add('nbg-dragsurface');
     });
-    grip.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); delete panelPos[panel.id]; if (onMoved) onMoved(null); relayout(); });
+    grip.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); setAnchored(null); relayout(); });
     grip.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); });
   }
   function placePanel(panel, anchor) {   // anchor = the selection's rect, or null for an idle toolbar (docked top-left)
@@ -672,7 +705,7 @@
     h += '<button type="button" data-f="done" class="nbg-tdone" title="Apply (Enter) — or finish with the selected text blocks">Done</button>';
     h += '<button type="button" data-f="close" class="nbg-tquiet nbg-tclose" title="Hide this toolbar (right-click → Toolbars shows it again)">✕</button>';
     tools.innerHTML = '<span class="nbg-tlabel nbg-tnote"></span>' + h;
-    makeMovable(tools, layoutTools);
+    makeMovable(tools, layoutTools, null, null, 'text');
     // keep the editable focused and its selection intact while using the buttons
     tools.addEventListener('pointerdown', function (e) { if (!e.target.closest('input, select')) e.preventDefault(); saveSelection(); });
     tools.addEventListener('click', function (e) {
@@ -1345,7 +1378,7 @@
     h += '<button type="button" data-a="ungroup" title="Ungroup (Ctrl/Cmd+Shift+G)">Ungroup</button>';
     h += '</div>';
     stools.innerHTML = h;
-    makeMovable(stools, layoutShapeTools);
+    makeMovable(stools, layoutShapeTools, null, null, 'shape');
     stools.addEventListener('click', function (e) {
       e.stopPropagation();
       var b = e.target.closest('button'); if (!b) return;
@@ -2811,6 +2844,7 @@
     '.nbg-panel.nbg-folded{height:auto!important;min-height:0!important;resize:none}.nbg-panel.nbg-folded .nbg-cb,.nbg-panel.nbg-folded .nbg-ab{display:none!important}.nbg-panel .nbg-fold{min-width:24px}' +
     '.nbg-panel.nbg-aipop{width:380px;height:auto;min-height:0;resize:none;z-index:2147483647}.nbg-aipop .nbg-ab{overflow:visible}.nbg-aipop textarea{min-height:56px}.nbg-aipop .nbg-ar{max-height:40vh;overflow:auto}.nbg-aipop.nbg-abusy [data-pop=send]{opacity:.5}' +
     '.nbg-panel .nbg-grip{cursor:grab;color:' + MUTED + ';padding:0 4px;letter-spacing:-2px;font-size:14px;line-height:28px;touch-action:none}.nbg-panel .nbg-grip:active{cursor:grabbing}' +
+    '.nbg-panel.nbg-anchored .nbg-grip{color:' + CYAN + '}.nbg-panel .nbg-anchor{display:inline-block;width:auto;min-width:0;margin:0 2px 0 -2px;padding:0 4px;border:0;border-radius:6px;background:rgba(0,173,191,.16);color:' + ACCENT + ';font:13px/24px ' + FONT + ';cursor:pointer}.nbg-panel .nbg-anchor:hover{background:rgba(0,173,191,.32)}.nbg-panel .nbg-anchor[hidden]{display:none!important}' +
     '.nbg-panel button{border:0;background:transparent;color:inherit;font:inherit;min-width:28px;height:28px;padding:0 6px;border-radius:6px;cursor:pointer;line-height:28px}' +
     '.nbg-panel button:hover{background:' + CREAM + '}.nbg-panel button.nbg-on{background:' + ACCENT + ';color:#fff}' +
     '.nbg-panel button.nbg-tquiet{color:' + MUTED + '}.nbg-panel button.nbg-tdone{background:' + CYAN + ';color:' + INK + ';font-weight:600;margin-left:4px}' +
@@ -3081,7 +3115,11 @@
     openMenu(e.clientX, e.clientY, resolveTextTarget(t), resolveShapeTarget(t));
   });
   document.addEventListener('dblclick', function (e) {
-    if (busy || (menu && !menu.hidden)) return;
+    if (busy) return;
+    if (menu && !menu.hidden) {   // an open menu: its own double-clicks are its business; on the deck it closes (unless held) and the double-click goes through
+      if (menu.contains(e.target)) return;
+      if (!menuHeld()) closeMenu();
+    }
     if (editing && editing.el.contains(e.target)) return;
     if (e.target && e.target.closest && e.target.closest('#nbg-shape-box')) return;
     var el = resolveTextTarget(e.target);

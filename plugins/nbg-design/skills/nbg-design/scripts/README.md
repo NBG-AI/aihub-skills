@@ -190,7 +190,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   the element's `white-space` and box do not change while editing (rich mode, not
   `plaintext-only`, which would force `pre-wrap` and re-flow the text).
 - **Formatting toolbar** (`#nbg-text-tools`, a `.nbg-panel` floating above the text while
-  editing; drag it anywhere by the `⋮⋮` grip, double-click the grip to re-dock). Every control is
+  editing; drag it anywhere by the `⋮⋮` grip — it is then **anchored**: `ui.anchor.text` / `.shape` keep the position per deck, the panel gets `.nbg-anchored` and a ⚓ button, `placePanel` opens it there; ⚓ or the grip's double-click release it (`setAnchored(null)` in `makeMovable`, which takes an `anchorKey`) and it follows the selection again). Every control is
   selection-aware: with a selection it changes only the selected run, with a collapsed caret the
   whole block. B / I / U / S on a run go through `execCommand` with `styleWithCSS` off (semantic
   tags; an un-bold inside a CSS-bold block arrives as a formatting span and is kept); on the block
