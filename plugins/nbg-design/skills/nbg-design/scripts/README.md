@@ -194,7 +194,13 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   are tagged during the edit so they can be told apart. The slide's CSS is never touched, and
   the element's `white-space` and box do not change while editing (rich mode, not
   `plaintext-only`, which would force `pre-wrap` and re-flow the text).
-- **Formatting toolbar** (`#nbg-text-tools`, a `.nbg-panel` floating above the text while
+- **One floating toolbar** (`#nbg-tools`, `.nbg-panel.nbg-tbar`): a side strip (`.nbg-tbside`: grip, ⚓, ⧉) and
+  `.nbg-tbrows` holding the text row `#nbg-text-tools` above the shape rows `#nbg-shape-tools` (both
+  `.nbg-inrow`: static, no own chrome; each still toggled by `syncToolbars` from its mode); the panel shows with
+  either row, is placed once by `placeTbar()` (the edited text, else the selection, else the selected text blocks,
+  else docked), anchors as one (`ui.anchor.tools`) and detaches as one (`detachPanel('tools')`; `'text'` /
+  `'shape'` map to it). `inTools` / `inShapeTools` mean "anywhere on the toolbar".
+- **Formatting row** (`#nbg-text-tools`, the top row of the toolbar, shown while editing or with text blocks selected —
   editing; drag it anywhere by the `⋮⋮` grip — it is then **anchored**: `ui.anchor.text` / `.shape` keep the position per deck, the panel gets `.nbg-anchored` and a ⚓ button, `placePanel` opens it there; ⚓ or the grip's double-click release it (`setAnchored(null)` in `makeMovable`, which takes an `anchorKey`) and it follows the selection again). Every control is
   selection-aware: with a selection it changes only the selected run, with a collapsed caret the
   whole block. B / I / U / S on a run go through `execCommand` with `styleWithCSS` off (semantic

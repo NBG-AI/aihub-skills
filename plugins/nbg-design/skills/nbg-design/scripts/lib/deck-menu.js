@@ -63,9 +63,11 @@
  * hierarchy as the menu (front-most first, containers and shapes behind), plus Edit text; a click selects,
  * Shift+click adds, Esc / a click elsewhere closes it.
  *
- * Anchored toolbars: dragging the text or the shape toolbar anchors it — it opens at that spot from then
- * on (ui.anchor, per deck), shows ⚓ next to its grip; ⚓ or a double-click on the grip releases it, and it
- * follows the selection again.
+ * One floating toolbar (#nbg-tools): the text formatting row and the shape & arrange rows live in a single
+ * panel with one grip, one ⚓ and one ⧉ in a side strip; each row still shows / hides on its own (the
+ * Toolbars section, a row's ✕, the modes), the panel shows with either. Anchored toolbar: dragging it
+ * anchors it — it opens at that spot from then on (ui.anchor.tools, per deck), shows ⚓; ⚓ or a
+ * double-click on the grip releases it, and it follows the selection again.
  *
  * Toolbars (menu "Toolbars" section): each toolbar — text formatting, shape & arrange, structure /
  * HTML — is 'auto' (appears with the selection), 'on' (pinned: stays visible, idle when nothing
@@ -199,7 +201,7 @@
   }
 
   /* ---------- target resolution ---------- */
-  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-text-tools, #nbg-shape-tools, #nbg-code, #nbg-ai, #nbg-ai-pop, #nbg-stack-pop';
+  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-tools, #nbg-text-tools, #nbg-shape-tools, #nbg-code, #nbg-ai, #nbg-ai-pop, #nbg-stack-pop';
   var INLINE = /^(span|a|b|i|em|strong|small|code|sup|sub|mark|u|abbr|time|label|s|q)$/i;
   function hasOwnText(el) {
     for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
@@ -317,8 +319,8 @@
 
   /* ---------- toolbar visibility: 'auto' (with the selection), 'on' (pinned), 'off' (closed by the viewer) ---------- */
   var UI_KEY = 'nbg-deck-ui:' + location.pathname;
-  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false, split: 0.55, anchor: { text: null, shape: null } };   // anchor: where the viewer dragged a toolbar — it opens there until released   // split: the Tree tab's share above the source editor   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
-  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; if (uiStored.anchor && typeof uiStored.anchor === 'object') ['text', 'shape'].forEach(function (k) { var a = uiStored.anchor[k]; if (a && typeof a.left === 'number' && typeof a.top === 'number') ui.anchor[k] = { left: a.left, top: a.top }; }); } } catch (e) { /* storage unavailable */ }
+  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false, split: 0.55, anchor: { tools: null } };   // anchor: where the viewer dragged the toolbar — it opens there until released   // split: the Tree tab's share above the source editor   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
+  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; if (uiStored.anchor && typeof uiStored.anchor === 'object') ['tools'].forEach(function (k) { var a = uiStored.anchor[k]; if (a && typeof a.left === 'number' && typeof a.top === 'number') ui.anchor[k] = { left: a.left, top: a.top }; }); } } catch (e) { /* storage unavailable */ }
   // the structure and assistant panels collapse to their header row (the ▾ / ▸ button); remembered per deck
   function applyFold(k) {
     return;   // the structure and the assistant live in the menu now — nothing folds
@@ -327,7 +329,7 @@
   }
   function setFold(k, on) { return; }   // kept for the API; the panels are tabs of the menu and do not fold
   function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ignore */ } }
-  var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML', ai: 'AI assistant', menu: 'Menu & structure' };
+  var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML', ai: 'AI assistant', menu: 'Menu & structure', tools: 'Text & shape toolbar' };
   function textTargets() { return editing ? [editing.el] : sel.filter(hasOwnText); }   // what the text toolbar works on
   function toolbarWanted(k) {
     if (isDetached(k)) return true;                 // a detached panel stays in its window (idle when nothing applies)
@@ -337,14 +339,15 @@
     if (k === 'shape') return !!shape;
     return false;                                   // the structure and assistant panels open on request only
   }
-  function toolbarPanel(k) { return k === 'text' ? tools : k === 'shape' ? stools : k === 'code' ? code : k === 'menu' ? menu : ai; }
+  function toolbarPanel(k) { return k === 'text' ? tools : k === 'shape' ? stools : k === 'tools' ? tbar : k === 'code' ? code : k === 'menu' ? menu : ai; }
   function toolbarVisible(k) { var p = toolbarPanel(k); return !!(p && !p.hidden); }
   function setToolbarMode(k, mode) { ui[k] = mode; uiSave(); syncToolbars(); }
   // show / hide every toolbar according to its mode and the current selection, then lay them out
   function syncToolbars() {
     if (toolbarWanted('text')) { if (!tools) buildTools(); tools.hidden = false; } else if (tools) { tools.hidden = true; toolsSel = null; }
     if (toolbarWanted('shape')) { if (!stools) buildShapeTools(); stools.hidden = false; } else if (stools) stools.hidden = true;
-    layoutTools(); layoutShapeTools(); layoutAi();
+    if (tbar) tbar.hidden = !((tools && !tools.hidden) || (stools && !stools.hidden));   // the one floating toolbar: shown with either row
+    layoutTools(); layoutShapeTools(); placeTbar(); layoutAi();
     if (menuHeld() && menu && !menu.hidden) refreshMenu();
   }
 
@@ -442,7 +445,7 @@
     var grip = document.createElement('span');
     grip.className = 'nbg-grip'; grip.textContent = '⋮⋮';
     grip.title = anchorKey ? 'Drag to move this toolbar — it then stays anchored there; double-click (or ⚓) to let it follow the selection again' : 'Drag to move this toolbar — double-click to let it follow the selection again';
-    var host = panel.querySelector('.nbg-row') || panel;   // a multi-row panel keeps the grip in its first row
+    var host = panel.querySelector('.nbg-tbside, .nbg-row') || panel;   // the toolbar's side strip, else a multi-row panel's first row
     host.insertBefore(grip, host.firstChild);
     var anchorBtn = null;
     if (anchorKey) {
@@ -515,16 +518,28 @@
       top = anchor.top - tr.height - 12;
       if (top < 8) top = anchor.bottom + 12 + tr.height <= window.innerHeight - 8 ? anchor.bottom + 12 : Math.max(8, Math.min(anchor.top + 16, window.innerHeight - tr.height - 8));
     }
-    if (!pos && panel === stools) {   // the shape toolbar must not cover the text toolbar: slide below (or above) it
-      [tools].forEach(function (o) {
-        if (!o || o.hidden) return;
-        var r = o.getBoundingClientRect(); if (!r.width) return;
-        if (left < r.right && left + tr.width > r.left && top < r.bottom && top + tr.height > r.top) {
-          top = r.bottom + 6 + tr.height <= window.innerHeight - 8 ? r.bottom + 6 : Math.max(8, r.top - tr.height - 6);
-        }
-      });
-    }
     panel.style.left = left + 'px'; panel.style.top = top + 'px';
+  }
+  /* ---------- the one floating toolbar: the text row and the shape rows in a single panel ---------- */
+  var tbar = null;
+  function ensureTbar() {
+    if (tbar) return tbar;
+    tbar = document.createElement('div');
+    tbar.id = 'nbg-tools'; tbar.className = 'nbg-panel nbg-tbar'; tbar.hidden = true;
+    tbar.setAttribute('role', 'toolbar'); tbar.setAttribute('aria-label', 'Text and shape toolbar');
+    tbar.innerHTML = '<div class="nbg-tbside"><button type="button" data-tb="detach" class="nbg-tquiet nbg-detach" title="Detach this toolbar into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the toolbar back">⧉</button></div><div class="nbg-tbrows"></div>';
+    tbar.querySelector('[data-tb=detach]').addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); detachPanel('tools'); });
+    document.body.appendChild(tbar);
+    makeMovable(tbar, placeTbar, null, null, 'tools');   // one grip, one anchor for both rows
+    return tbar;
+  }
+  function placeTbar() {   // next to what is being edited or selected; docked top-left when idle; where it is anchored
+    if (!tbar || tbar.hidden) return;
+    var anchor = null;
+    if (editing) anchor = editing.el.getBoundingClientRect();
+    else if (sel.length) anchor = unionRect(sel);
+    else { var tt = textTargets(); if (tt.length) anchor = unionRect(tt); }
+    placePanel(tbar, anchor);
   }
   function swatches(attr, list) {
     return '<span class="nbg-swatches">' + list.map(function (c) {
@@ -688,7 +703,7 @@
   }
   function buildTools() {
     tools = document.createElement('div');
-    tools.id = 'nbg-text-tools'; tools.className = 'nbg-panel';
+    tools.id = 'nbg-text-tools'; tools.className = 'nbg-panel nbg-inrow';
     tools.setAttribute('role', 'toolbar');
     var h = '';
     h += '<button type="button" data-f="bold" title="Bold (Ctrl/Cmd+B) — the selection, or the whole text when nothing is selected"><b>B</b></button>';
@@ -710,7 +725,6 @@
     h += '<button type="button" data-f="done" class="nbg-tdone" title="Apply (Enter) — or finish with the selected text blocks">Done</button>';
     h += '<button type="button" data-f="close" class="nbg-tquiet nbg-tclose" title="Hide this toolbar (right-click → Toolbars shows it again)">✕</button>';
     tools.innerHTML = '<span class="nbg-tlabel nbg-tnote"></span>' + h;
-    makeMovable(tools, layoutTools, null, null, 'text');
     // keep the editable focused and its selection intact while using the buttons
     tools.addEventListener('pointerdown', function (e) { if (!e.target.closest('input, select')) e.preventDefault(); saveSelection(); });
     tools.addEventListener('click', function (e) {
@@ -726,7 +740,7 @@
     tools.querySelector('[data-f=size]').addEventListener('keydown', function (e) { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); format('size', e.target.value); restoreSelection(); } if (e.key === 'Escape') { e.preventDefault(); restoreSelection(); } });
     tools.querySelector('[data-f=family]').addEventListener('change', function (e) { format('family', e.target.value); restoreSelection(); });
     tools.querySelector('[data-f=family]').addEventListener('keydown', function (e) { e.stopPropagation(); });
-    document.body.appendChild(tools);
+    var rows = ensureTbar().querySelector('.nbg-tbrows'); rows.insertBefore(tools, rows.firstChild);   // the text row sits above the shape rows
   }
   function showTools() { syncToolbars(); }
   function hideTools() { toolsSel = null; syncToolbars(); }
@@ -740,12 +754,12 @@
     var els = textTargets(), el = editing ? editing.el : els[0], note = tools.querySelector('.nbg-tnote');
     tools.classList.toggle('nbg-idle', !el);
     note.textContent = editing ? '' : el ? (els.length > 1 ? els.length + ' text blocks' : 'Text block') : 'Select text, or double-click to edit';
-    if (!el) { placePanel(tools, null); return; }
+    if (!el) { placeTbar(); return; }
     var range = editing ? currentRange() : null;
     var probe = range ? (range.startContainer.nodeType === 3 ? range.startContainer.parentElement : range.startContainer) : el;
     if (!probe || !(probe === el || el.contains(probe))) probe = el;
     var cs = getComputedStyle(probe);
-    placePanel(tools, editing ? el.getBoundingClientRect() : unionRect(els));
+    placeTbar();
     tools.querySelector('[data-f=size]').value = Math.round(fontSizePx(probe));
     var fam = inlineUp(probe, 'font-family', el), famSel = tools.querySelector('[data-f=family]');
     famSel.value = fam; if (famSel.value !== fam) famSel.value = '';
@@ -1281,7 +1295,7 @@
   };
   function icon(k) { return '<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true">' + ICONS[k] + '</svg>'; }
   function abtn(action, value, title, label) { return '<button type="button" data-a="' + action + '"' + (value ? ' data-v="' + value + '"' : '') + ' title="' + title + '">' + (label || icon(value || action)) + '</button>'; }
-  function inShapeTools(t) { return !!(stools && t && stools.contains(t)); }
+  function inShapeTools(t) { return !!(tbar && t && tbar.contains(t)); }   // anywhere on the one toolbar
   function tidyStyle(el) { if (el.getAttribute('style') === '') el.removeAttribute('style'); }
   function shapeStyle(prop, value) {
     if (!shape) return;
@@ -1343,7 +1357,7 @@
   }
   function buildShapeTools() {
     stools = document.createElement('div');
-    stools.id = 'nbg-shape-tools'; stools.className = 'nbg-panel nbg-rows';
+    stools.id = 'nbg-shape-tools'; stools.className = 'nbg-panel nbg-rows nbg-inrow';
     stools.setAttribute('role', 'toolbar');
     var h = '<div class="nbg-row">';
     h += '<label title="Left (px on the artboard; offset for elements in normal flow; the selection box for several shapes)">X<input type="number" data-s="left" step="1"></label>';
@@ -1362,7 +1376,6 @@
     h += '<i class="nbg-tsep"></i>';
     h += '<button type="button" data-s="reset" class="nbg-tquiet" title="Restore the selected shapes’ original size, position and style">Reset</button>';
     h += '<button type="button" data-s="done" class="nbg-tdone" title="Finish (Esc)">Done</button>';
-    h += '<button type="button" data-s="detach" class="nbg-tquiet nbg-detach" title="Detach into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the toolbar back">⧉</button>';
     h += '<button type="button" data-s="close" class="nbg-tquiet nbg-tclose" title="Hide this toolbar (right-click → Toolbars shows it again)">✕</button>';
     // second row: arrange
     h += '</div><div class="nbg-row">';
@@ -1383,14 +1396,13 @@
     h += '<button type="button" data-a="ungroup" title="Ungroup (Ctrl/Cmd+Shift+G)">Ungroup</button>';
     h += '</div>';
     stools.innerHTML = h;
-    makeMovable(stools, layoutShapeTools, null, null, 'shape');
     stools.addEventListener('click', function (e) {
       e.stopPropagation();
       var b = e.target.closest('button'); if (!b) return;
       e.preventDefault();
       var a = b.getAttribute('data-s'), ar = b.getAttribute('data-a');
-      if (a === 'close') { if (isDetached('shape')) reattachPanel('shape'); setToolbarMode('shape', 'off'); return; }
-      if (a === 'detach') { detachPanel('shape'); return; }
+      if (a === 'close') { setToolbarMode('shape', 'off'); return; }
+      if (a === 'detach') { detachPanel('tools'); return; }
       if (!shape) return;
       if (ar) arrange(ar, b.getAttribute('data-v'));
       else if (a === 'done') deselectShape();
@@ -1414,7 +1426,7 @@
       if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); e.target.dispatchEvent(new Event('change', { bubbles: true })); }
       if (e.key === 'Escape') { e.preventDefault(); deselectShape(); }
     });
-    document.body.appendChild(stools);
+    ensureTbar().querySelector('.nbg-tbrows').appendChild(stools);
   }
   var stackList = [];   // what the toolbar's Stack select offers: enclosing shapes, the selected one, its child shapes
   function layoutStackList() {
@@ -1434,9 +1446,9 @@
   function layoutShapeTools() {
     if (!stools || stools.hidden) return;
     stools.classList.toggle('nbg-idle', !shape);
-    if (!shape) { stools.querySelector('[data-count]').textContent = 'No shape selected'; var sl0 = stools.querySelector('[data-a=stack]'); sl0.hidden = true; placePanel(stools, null); return; }
+    if (!shape) { stools.querySelector('[data-count]').textContent = 'No shape selected'; var sl0 = stools.querySelector('[data-a=stack]'); sl0.hidden = true; placeTbar(); return; }
     var el = shape.el, g = geom(el), st = el.style, multi = sel.length > 1;
-    placePanel(stools, unionRect(sel));
+    placeTbar();
     var set = function (k, v) { var i = stools.querySelector('[data-s=' + k + ']'); if (stools.ownerDocument.activeElement !== i) i.value = v; };
     if (multi) { var a = unionArt(); set('left', Math.round(a.left)); set('top', Math.round(a.top)); set('width', Math.round(a.width)); set('height', Math.round(a.height)); }
     else {
@@ -2562,24 +2574,25 @@
   function aiIsOpen() { return !!(menu && !menu.hidden && menuTab === 'ai' && ai && !ai.hidden); }
 
   /* ---------- detachable panels ---------- */
-  var detached = { shape: null, menu: null };   // k -> the Window holding the panel ('code' and 'ai' map to 'menu')
+  var detached = { tools: null, menu: null };   // k -> the Window holding the panel ('text' / 'shape' map to 'tools', 'code' / 'ai' to 'menu')
   function detachedPanel(panel) { return !!(panel && panel.ownerDocument !== document); }
-  function isDetached(k) { if (k === 'code' || k === 'ai') k = 'menu'; var w = detached[k]; return !!(w && !w.closed); }
+  function isDetached(k) { if (k === 'code' || k === 'ai') k = 'menu'; if (k === 'text' || k === 'shape') k = 'tools'; var w = detached[k]; return !!(w && !w.closed); }
   var DETACHED_CSS = 'html,body{margin:0;height:100%;background:#fff;overflow:hidden;font:13px ' + FONT + '}' +
     '.nbg-panel.nbg-detached{position:static!important;left:auto!important;top:auto!important;width:auto!important;max-width:none!important;height:100vh!important;min-height:0!important;min-width:0!important;box-shadow:none;border:0;border-radius:0;resize:none;box-sizing:border-box;overflow:auto}' +
     '.nbg-panel.nbg-detached .nbg-grip,.nbg-panel.nbg-detached .nbg-detach,.nbg-panel.nbg-detached .nbg-fold{display:none}' +
     '#nbg-deck-menu.nbg-detached{position:static!important;left:auto!important;top:auto!important;width:100%!important;min-width:0!important;max-width:none!important;height:100vh!important;max-height:none!important;box-shadow:none;border:0;border-radius:0;resize:none;box-sizing:border-box;display:flex;flex-direction:column}' +
     '#nbg-deck-menu.nbg-detached .nbg-mdetach,#nbg-deck-menu.nbg-detached .nbg-pin{display:none}#nbg-deck-menu.nbg-detached .nbg-mbody{flex:1;min-height:0;overflow-y:auto}' +
-    '#nbg-shape-tools.nbg-detached{height:auto!important;align-items:flex-start}#nbg-shape-tools.nbg-detached .nbg-row{flex-wrap:wrap}' +
+    '#nbg-tools.nbg-detached{height:auto!important;align-items:flex-start}#nbg-tools.nbg-detached .nbg-row{flex-wrap:wrap}#nbg-tools.nbg-detached .nbg-tbside{display:none}' +
     '.nbg-panel.nbg-detached .nbg-dragsurface{cursor:default}';
   // move the panel into its own window: a Document Picture-in-Picture window (Chrome / Edge), else a pop-up; `target` = a window to use instead (tests)
   async function detachPanel(k, target) {
     if (k === 'code' || k === 'ai') k = 'menu';   // the structure panel and the assistant travel with the menu
-    if (k !== 'shape' && k !== 'menu') return false;
+    if (k === 'text' || k === 'shape') k = 'tools';   // both rows travel as the one toolbar
+    if (k !== 'tools' && k !== 'menu') return false;
     if (isDetached(k)) { try { detached[k].focus(); } catch (e) { /* ignore */ } return true; }
-    if (!toolbarPanel(k)) { if (k === 'shape') buildShapeTools(); else ensureMenu(); }
+    if (k === 'tools') { ensureTbar(); if (!tools) buildTools(); if (!stools) buildShapeTools(); } else ensureMenu();
     var panel = toolbarPanel(k), w = target || null;
-    var size = k === 'shape' ? { width: 760, height: 160 } : { width: Math.max(420, panel.offsetWidth || 480), height: Math.max(520, panel.offsetHeight || 720) };
+    var size = k === 'tools' ? { width: 800, height: 240 } : { width: Math.max(420, panel.offsetWidth || 480), height: Math.max(520, panel.offsetHeight || 720) };
     if (!w) {
       if (window.documentPictureInPicture && window.documentPictureInPicture.requestWindow) { try { w = await window.documentPictureInPicture.requestWindow(size); } catch (e) { w = null; } }
       if (!w) { try { w = window.open('', 'nbg-deck-' + k, 'popup=yes,width=' + size.width + ',height=' + size.height); } catch (e) { w = null; } }
@@ -2595,15 +2608,16 @@
     d.body.appendChild(panel);   // adopted into the other document; its listeners travel with it
     detached[k] = w;
     if (k === 'menu') { menu.hidden = false; renderMenu(); if (menuTab !== 'menu') showTab(menuTab); }
-    else { ui[k] = 'on'; uiSave(); }
+    else tbar.hidden = false;   // both rows show in the window (idle when nothing applies); the modes are untouched
     w.addEventListener('pagehide', function () { if (detached[k] === w) reattachPanel(k); });
-    w.addEventListener('resize', function () { if (k === 'shape') layoutShapeTools(); else if (k === 'menu') applySplit(); });
+    w.addEventListener('resize', function () { if (k === 'tools') { layoutTools(); layoutShapeTools(); } else if (k === 'menu') applySplit(); });
     syncToolbars();
     toast(TOOLBAR_NAMES[k] + ' detached into its own window — close that window (or ✕ / Esc in the panel) to bring it back.', 3500);
     return true;
   }
   function reattachPanel(k) {
     if (k === 'code' || k === 'ai') k = 'menu';
+    if (k === 'text' || k === 'shape') k = 'tools';
     var panel = toolbarPanel(k), w = detached[k];
     detached[k] = null;
     if (!panel) return false;
@@ -2615,7 +2629,7 @@
     syncToolbars();
     return true;
   }
-  window.addEventListener('pagehide', function () { ['shape', 'menu'].forEach(function (k) { var w = detached[k]; if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } } }); });
+  window.addEventListener('pagehide', function () { ['tools', 'menu'].forEach(function (k) { var w = detached[k]; if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } } }); });
 
   /* ---------- discard / save ---------- */
   function discardEdits() {
@@ -2843,10 +2857,13 @@
     '.nbg-ai .nbg-ap{display:flex;align-items:center;gap:4px;padding:3px 4px;border-radius:6px}.nbg-ai .nbg-ap.nbg-on{background:' + CREAM + '}.nbg-ai .nbg-apn{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}' +
     '.nbg-ai .nbg-aped{display:flex;flex-direction:column;gap:4px;border-top:1px solid rgba(0,56,65,.12);padding-top:6px}' +
     '.nbg-ai [hidden]{display:none!important}' +
-    '.nbg-capturing #nbg-stack-pop,.nbg-capturing #nbg-deck-menu,.nbg-capturing #nbg-deck-toast,.nbg-capturing #nbg-shape-box,.nbg-capturing #nbg-sel-marks,.nbg-capturing #nbg-marquee,.nbg-capturing #nbg-hover,.nbg-capturing .nbg-panel{visibility:hidden!important}.nbg-capturing .nbg-editing{outline:none!important;box-shadow:none!important}' +
+    '.nbg-capturing #nbg-tools,.nbg-capturing #nbg-stack-pop,.nbg-capturing #nbg-deck-menu,.nbg-capturing #nbg-deck-toast,.nbg-capturing #nbg-shape-box,.nbg-capturing #nbg-sel-marks,.nbg-capturing #nbg-marquee,.nbg-capturing #nbg-hover,.nbg-capturing .nbg-panel{visibility:hidden!important}.nbg-capturing .nbg-editing{outline:none!important;box-shadow:none!important}' +
     '.nbg-panel{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:2px;padding:4px 6px;background:#fff;color:' + INK + ';' +
     'border:1px solid rgba(0,56,65,.14);border-radius:10px;box-shadow:0 10px 28px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:13px/1 ' + FONT + ';user-select:none;-webkit-user-select:none;max-width:calc(100vw - 16px);flex-wrap:wrap}' +
     '.nbg-panel[hidden]{display:none!important}' +
+    '.nbg-panel.nbg-tbar{flex-wrap:nowrap;align-items:stretch;gap:4px;padding:4px 6px 4px 4px}.nbg-tbar .nbg-tbside{display:flex;flex-direction:column;align-items:center;gap:2px;padding:2px 0;border-right:1px solid rgba(0,56,65,.10)}' +
+    '.nbg-tbar .nbg-tbrows{display:flex;flex-direction:column;align-items:stretch;gap:2px;min-width:0}.nbg-panel.nbg-inrow{position:static;box-shadow:none;border:0;border-radius:0;max-width:none;padding:2px 2px}' +
+    '.nbg-tbar .nbg-inrow + .nbg-inrow{border-top:1px solid rgba(0,56,65,.10);padding-top:4px}.nbg-tbar .nbg-tbside .nbg-grip{line-height:20px;padding:0 2px}.nbg-tbar .nbg-tbside .nbg-anchor{margin:0;padding:0 3px;line-height:20px;font-size:12px}.nbg-tbar .nbg-tbside .nbg-detach{padding:0 3px;line-height:20px}' +
     '.nbg-code .nbg-cb::-webkit-scrollbar,.nbg-ai .nbg-ar pre::-webkit-scrollbar{width:10px;height:10px}.nbg-code .nbg-cb::-webkit-scrollbar-track,.nbg-ai .nbg-ar pre::-webkit-scrollbar-track{background:transparent}' +
     '.nbg-code .nbg-cb::-webkit-scrollbar-thumb,.nbg-ai .nbg-ar pre::-webkit-scrollbar-thumb{background:rgba(0,56,65,.28);border-radius:5px;border:2px solid #fff}.nbg-code .nbg-cb::-webkit-scrollbar-thumb:hover{background:rgba(0,56,65,.45)}' +
     '.nbg-code .nbg-cb{scrollbar-width:thin;scrollbar-color:rgba(0,56,65,.35) transparent}' +
@@ -3197,7 +3214,7 @@
     e.preventDefault();
     startEdit(el, true);
   });
-  function inTools(t) { return !!(tools && t && tools.contains(t)); }
+  function inTools(t) { return !!(tbar && t && tbar.contains(t)); }   // anywhere on the one toolbar (its grip and side strip included)
   document.addEventListener('pointerdown', function (e) {
     if (menu && !menu.hidden && !menu.contains(e.target) && !menuHeld()) closeMenu();
     if (stackPop && !stackPop.hidden && !stackPop.contains(e.target)) closeStackPop();
@@ -3312,7 +3329,7 @@
       align: alignSelection, distribute: distributeSelection, order: reorder, group: groupSelection, ungroup: ungroupSelection,
       groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes,
     },
-    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { if (k === 'code' || k === 'ai') k = 'menu'; return isDetached(k) ? detached[k] : null; } },
+    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { if (k === 'code' || k === 'ai') k = 'menu'; if (k === 'text' || k === 'shape') k = 'tools'; return isDetached(k) ? detached[k] : null; } },
     picker: { isOpen: stackPopOpen, close: closeStackPop },
     menu: { open: function (x, y) { openMenu(x === undefined ? window.innerWidth / 2 : x, y === undefined ? window.innerHeight / 2 : y, null, null); return true; }, close: function () { closeMenu(true); return true; }, isOpen: function () { return !!(menu && !menu.hidden); }, tab: function (t) { if (t !== undefined) setMenuTab(t); return menuTab; }, pinned: function (on) { if (on !== undefined && menu) { menuPinned = !!on; if (!menu.hidden) refreshMenu(); } return menuPinned; }, held: menuHeld, detach: function (w) { return detachPanel('menu', w); }, reattach: function () { return reattachPanel('menu'); } },
     ai: {
