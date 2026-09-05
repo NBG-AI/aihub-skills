@@ -189,3 +189,43 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html          # add / upgr
 node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html --remove # strip (only if the user declines it)
 ```
 Tell the recipient in one line: double-click any text to edit it (Enter applies, Esc cancels); right-click for *Resize / move shape* (Shift+click or Shift+drag selects several; the toolbar orders, aligns, distributes and groups them), *Export to PDF* and *Save edited copy*.
+
+## Per-Deck Rebuild Script
+
+### Function
+Deliver, with every deck's HTML and PDF, a `<deck>.rebuild.mjs` script that re-embeds the skill's current in-deck editing tools (the inlined right-click menu block: menu, toolbars, structure panel, assistant, print layout) into that deck after the skill was updated — without regenerating the deck — then verifies the deck and re-exports its PDF.
+
+### Script
+- `scripts/write-rebuild-script.mjs` — writes `<deck>.rebuild.mjs` next to a deck that carries the editor block (zero-dependency Node ≥ 18; exports `buildRecord`, `renderRebuildScript`, `shippedBlockVersion`, `readPluginVersion`)
+- the generated `<deck>.rebuild.mjs` — self-contained; imports `addMenu` from the resolved `add-deck-menu.mjs` and spawns `verify-deck.mjs` and `export-pdf.mjs`
+
+### Functional Requirements
+- Generated after `add-deck-menu.mjs` (a deck without the editor block, the old PDF-only block and page-mode blocks are refused with a message; `--size` must be `WxH`).
+- Record in the generated script, as plain JSON: the deck and PDF file names relative to the script (`--pdf <file>` for another PDF, `--no-pdf` when none was delivered), the skill's `scripts/` directory, the embedded block version, the plugin version when the skill sits in its plugin checkout, the block's configuration and the exporter options (`--selector` — the block's `root` when it is not `.slide` — and `--size`). Warn when the PDF does not exist yet. `-o` names the script.
+- The generated script: `--check` reports `RESULT: CURRENT` (exit 0) or `REBUILD NEEDED` (exit 1) without writing; otherwise back the deck up to `<name>.backup-<stamp>.html` (unless `--no-backup`), replace the editor block with the skill's current one keeping the recorded configuration (status added / refreshed / upgraded from vN / already current; the slides are untouched), run `verify-deck.mjs --strict` (stop with exit 1 on failure), export the PDF with `export-pdf.mjs` and the recorded options (exit 3 when no browser exists; `--no-pdf` skips, `--pdf <file>` redirects); a deck given as argument is rebuilt instead (its PDF lands next to it).
+- Resolve the skill's scripts through `--scripts <dir>`, then `NBG_DESIGN_SCRIPTS`, then the recorded directory; require `add-deck-menu.mjs`, `verify-deck.mjs`, `export-pdf.mjs`, `lib/deck-menu.js`, `lib/print-layout.js` there and exit 1 naming the source and the path otherwise; never try another location.
+- Exit codes: 0 rebuilt / current, 1 error / gate failed / not current, 2 usage, 3 HTML rebuilt but no browser for the PDF.
+- The agent delivers the three files together and tells the recipient that `node <deck>.rebuild.mjs` refreshes the editing tools and the PDF after a skill update (`NBG_DESIGN_SCRIPTS` or `--scripts` when the skill lives elsewhere).
+
+### How to Use
+```bash
+node "<skill-root>/scripts/write-rebuild-script.mjs" my-deck.html                 # writes my-deck.rebuild.mjs (PDF: my-deck.pdf)
+node "<skill-root>/scripts/write-rebuild-script.mjs" my-deck.html --pdf out/my-deck.pdf
+node my-deck.rebuild.mjs --check                                                    # is the deck's editor current?
+node my-deck.rebuild.mjs                                                            # rebuild: backup, new editor block, verify, PDF
+NBG_DESIGN_SCRIPTS=~/.claude/plugins/.../skills/nbg-design/scripts node my-deck.rebuild.mjs
+```
+
+## Photography Catalogue
+
+### Function
+Give the agent a documented choice of bundled photography — five lifestyle photos and, since v1.17.0, 21 technology photos (seven subjects × three variants) — each with a ready-to-embed data URI and a placeholder token.
+
+### Functional Requirements
+- Every photo in `NBG-Design/assets/` is `photo-<stem>.jpeg` + `photo-<stem>.datauri.txt` and is placed with `{{PHOTO_<STEM>}}` (upper case, `-` → `_`); `embed-assets.mjs` resolves the token by file name, so adding a photo needs no script change.
+- `SKILL.md` → "Photography catalogue" lists every photo with orientation, subject and typical use; the agent picks by subject and orientation, crops with `cover` rather than stretching, and uses one variant of a subject per deck unless repetition is deliberate.
+- The technology set follows the palette (deep teal accent, warm neutrals, cream), carries no text, logos or UI labels, and is delivered at a 2000 px long edge.
+- Generated images are added only after the user has reviewed thumbnails and chosen which to keep; the original photos are never replaced.
+
+### How to Use
+Pick a stem from the catalogue, write its token where the image goes (`background-image: url("{{PHOTO_NETWORK_2}}")` or `<img src="{{PHOTO_SECURITY_1}}">`), then run the standard gate: `embed-assets.mjs` → `add-deck-menu.mjs` → `verify-deck.mjs --strict`.

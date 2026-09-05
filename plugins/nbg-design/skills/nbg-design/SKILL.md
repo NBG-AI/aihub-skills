@@ -1,6 +1,6 @@
 ---
 name: nbg-design
-description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu for in-place text editing with a formatting toolbar, shape resize/move, an AI assistant panel, "Export to PDF" and "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu for in-place text editing with a formatting toolbar, shape resize/move, an AI assistant panel, "Export to PDF" and "Save edited copy", plus a per-deck rebuild script that re-embeds newer versions of those editing tools), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
 ---
 
 # NBG Design
@@ -86,6 +86,46 @@ Slide templates (`NBG-Design/slide-templates.jsx`, exposed as `window.<Name>`):
 | `ContentTwoColumn` | content | comparison or two-part explanation |
 | `ContentStat` | content | stat-led slide with a large figure |
 
+## Photography catalogue
+
+Every photo lives in `NBG-Design/assets/` as `<stem>.jpeg` with a ready-to-embed `<stem>.datauri.txt`, and is placed with the token `{{<STEM in upper case, '-' → '_'>}}` (e.g. `photo-network-2` → `{{PHOTO_NETWORK_2}}`). Pick by subject and orientation: landscape photos fit the divider image card, the content image-right column and full-bleed backgrounds; portrait photos fit the cover photo card (720 × 880 / 820 × 960). Never stretch a photo to the other orientation — crop with `object-fit: cover` / `background-size: cover` instead.
+
+Lifestyle set (original, Greek everyday life, warm light):
+
+| Stem | Orientation | Subject | Typical use |
+| --- | --- | --- | --- |
+| `photo-fields` | landscape | child running through a wheat field towards wind turbines | sustainability, growth, energy |
+| `photo-heart` | landscape | hands forming a heart | people, care, community |
+| `photo-parthenon` | landscape | the Parthenon | heritage, Greece, institution |
+| `photo-skate` | landscape | skateboarder in the city | youth, momentum, agility |
+| `photo-street` | portrait | Athens shopping street at golden hour | retail, customers, everyday banking |
+
+Technology set (generated 2026-09, teal-and-cream palette, no text or logos; three variants per subject — `1`, `2`, `3` are alternative takes of the same brief, so use only one variant of a subject per deck unless the repetition is deliberate):
+
+| Stem | Orientation | Subject | Typical use |
+| --- | --- | --- | --- |
+| `photo-datacenter-1` | landscape | dark server racks with teal status lights, warm-lit wall and plant on the left | infrastructure, cloud, resilience |
+| `photo-datacenter-2` | landscape | bright white server room, racks receding to the right, warm ceiling light | infrastructure, quiet/clean tone |
+| `photo-datacenter-3` | landscape | long rack corridor in one-point perspective with a bright end | infrastructure, scale, journey |
+| `photo-team-analytics-1` | landscape | three colleagues at a large wall chart on the left, windows behind | data, analytics, collaboration |
+| `photo-team-analytics-2` | landscape | three colleagues in front of a teal wall, display on the right, Athens hills through the window | data, teamwork, local context |
+| `photo-team-analytics-3` | landscape | three colleagues pointing at a bright wall display on the left | data, review, decisions |
+| `photo-network-1` | landscape | small teal glass nodes on thin lines, large empty cream area on the left | abstract cover/divider background, headline on the left |
+| `photo-network-2` | landscape | large teal glass spheres close up on the right, soft curtain, empty left | abstract cover background, AI/network themes |
+| `photo-network-3` | landscape | web of teal and cream glass nodes on a plaster wall, empty left third | abstract divider background, connectivity |
+| `photo-chip-1` | landscape | microprocessor on a dark board seen from above-left, shallow focus | AI, compute, engineering |
+| `photo-chip-2` | landscape | microprocessor centred on copper traces, warm tones | AI, hardware, precision |
+| `photo-chip-3` | landscape | microprocessor on a board with a deeply blurred surround | AI, technology detail |
+| `photo-athens-dusk-1` | portrait | glass office tower at blue hour, Acropolis far off, street light trails | cover photo card, city, future |
+| `photo-athens-dusk-2` | portrait | office towers seen from above at dusk, streets and Acropolis beyond | cover photo card, urban banking |
+| `photo-athens-dusk-3` | portrait | lit glass tower over the evening city, Acropolis in the distance | cover photo card, growth |
+| `photo-security-1` | portrait | frosted-glass padlock on a dark teal stone, warm side light | security, trust, compliance |
+| `photo-security-2` | portrait | frosted-glass padlock on a green-marble slab, cream ground | security, calm/premium tone |
+| `photo-security-3` | portrait | frosted-glass padlock on a teal block, bright cream ground | security, clarity |
+| `photo-developer-1` | landscape | engineer at a standing desk with two monitors, side profile, teal wall | engineering, delivery, software |
+| `photo-developer-2` | landscape | engineer seated at a desk by a window, teal wall | engineering, focus |
+| `photo-developer-3` | landscape | engineer at a standing desk, two monitors, warm wood and plant | engineering, modern workplace |
+
 ## Design-system rules
 
 - Use the NBG Presentation Design System; do not invent a parallel brand or visual system.
@@ -149,7 +189,7 @@ A deck that contains any `file://`, absolute, or relative image path, or any non
 
 1. For each image you place, read the matching pre-encoded data-URI file bundled next to the asset and paste its **entire contents** as the `src`. Every asset has a ready-to-use `<asset>.datauri.txt`:
    - Logos: `NBG-Design/assets/logo-primary.datauri.txt` (full-color, for **light** backgrounds), `logo-knockout.datauri.txt` (white, for **dark** backgrounds), `logo-small.datauri.txt` (compact, for footers/tight spaces).
-   - Photography: `NBG-Design/assets/photo-fields.datauri.txt`, `photo-heart.datauri.txt`, `photo-parthenon.datauri.txt`, `photo-skate.datauri.txt`, `photo-street.datauri.txt`.
+   - Photography: `NBG-Design/assets/photo-fields.datauri.txt`, `photo-heart.datauri.txt`, `photo-parthenon.datauri.txt`, `photo-skate.datauri.txt`, `photo-street.datauri.txt`, plus the 21 technology photos `photo-<subject>-<1|2|3>.datauri.txt` listed in "Photography catalogue".
    - Each file already begins with the correct `data:image/png;base64,` or `data:image/jpeg;base64,` prefix — paste it verbatim, do not truncate or edit it.
    - Example: `<img src="data:image/png;base64,iVBORw0K..." alt="National Bank of Greece" style="height:56px;width:auto;display:block;" />`
 2. To avoid repeating a large data URI, define each one **once** and reuse it. Valid reuse patterns: a CSS class with `background-image: url("data:...")` applied to sized elements (data URIs work in `background-image`), or — in React/Babel decks — a shared JS constant interpolated into each `src`. (Note: CSS `var()` cannot be used for an `<img src>` attribute, only for `background-image`.)
@@ -159,7 +199,7 @@ A deck that contains any `file://`, absolute, or relative image path, or any non
 
 Hand-pasting large base64 blobs is the step that most often fails in non-interactive runs (e.g. `claude -p` over SSH on a Linux host): the model "approximates" a photo with a gradient or substitutes a text/box logo, and — with no display to screenshot — the lapse ships. **Do not rely on hand-pasting.** Use the bundled scripts instead:
 
-1. **Author the deck with placeholder tokens, not inline data URIs.** Put a token wherever an image goes: `{{LOGO_PRIMARY}}`, `{{LOGO_KNOCKOUT}}`, `{{LOGO_SMALL}}`, and `{{PHOTO_FIELDS}}`, `{{PHOTO_HEART}}`, `{{PHOTO_PARTHENON}}`, `{{PHOTO_SKATE}}`, `{{PHOTO_STREET}}`. Define each token **once** (e.g. a CSS `background-image: url("{{PHOTO_STREET}}")` class) and reuse the class.
+1. **Author the deck with placeholder tokens, not inline data URIs.** Put a token wherever an image goes: `{{LOGO_PRIMARY}}`, `{{LOGO_KNOCKOUT}}`, `{{LOGO_SMALL}}`, and `{{PHOTO_FIELDS}}`, `{{PHOTO_HEART}}`, `{{PHOTO_PARTHENON}}`, `{{PHOTO_SKATE}}`, `{{PHOTO_STREET}}`, or any technology photo token from "Photography catalogue" (`{{PHOTO_DATACENTER_1}}`, `{{PHOTO_NETWORK_2}}`, `{{PHOTO_SECURITY_3}}`, …). Define each token **once** (e.g. a CSS `background-image: url("{{PHOTO_STREET}}")` class) and reuse the class.
 2. **Embed deterministically.** From any working directory:
    `node "<skill-root>/scripts/embed-assets.mjs" <deck>.html`
    The script resolves the bundled assets relative to itself (not the cwd), so it works on any machine. It replaces every token with the verbatim `data:` URI and fails loudly if an asset is missing.
@@ -169,9 +209,12 @@ Hand-pasting large base64 blobs is the step that most often fails in non-interac
 4. **Verify before delivery (browser-free — works headless).**
    `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict`
    It exits non-zero if any image is not a `data:` URI, if forbidden `file://`/absolute/relative paths remain, if tokens are unresolved, or (in `--strict`) if the deck is suspiciously small / photo-less, contains bare `NBG`/`NPG` text that may be a logo substitute, or lacks the right-click deck menu. **Never deliver a deck that fails this gate.**
-5. **If the skill was moved to another machine**, confirm the **whole** skill folder travelled, including `NBG-Design/assets/` (the `*.datauri.txt` files) and `scripts/lib/`. If `embed-assets.mjs` reports a missing assets directory, that is the root cause — copy the full skill, not just `SKILL.md`.
+5. **Write the deck's rebuild script (standard for every delivered deck).**
+   `node "<skill-root>/scripts/write-rebuild-script.mjs" <deck>.html`
+   Writes `<deck>.rebuild.mjs` next to the deck: a self-contained Node script the recipient runs after this skill is updated, so the deck receives the **new version of the editing tools** (the inlined menu / toolbars / structure panel / assistant / PDF-export block) without being regenerated — it replaces only the editor block, leaves the slides untouched, re-runs `verify-deck.mjs --strict` and re-exports the PDF. It records the deck and PDF names, the skill's `scripts/` directory, the embedded block and plugin versions and the block's configuration. Pass `--no-pdf` when the deck is delivered without a PDF, `--pdf <file>` when the PDF has another name. See "Rebuild script". Skip only together with the menu (a deck without the menu has nothing to rebuild).
+6. **If the skill was moved to another machine**, confirm the **whole** skill folder travelled, including `NBG-Design/assets/` (the `*.datauri.txt` files) and `scripts/lib/`. If `embed-assets.mjs` reports a missing assets directory, that is the root cause — copy the full skill, not just `SKILL.md`.
 
-6. **Optional visual check when a browser exists.** On a host with Chrome/Chromium/Edge, also capture screenshots:
+7. **Optional visual check when a browser exists.** On a host with Chrome/Chromium/Edge, also capture screenshots:
    `node "<skill-root>/scripts/screenshot-deck.mjs" <deck>.html`
    It auto-detects a browser, navigates each slide (works for both hash-based and `showSlide`-based decks), and writes one PNG per slide at 1366×768 and 1440×900 into `test_scripts/screenshots/`. Then **read each PNG** and inspect for clipping, overflow, element overlap, missing logo/photos, and brand alignment. If no browser is found it exits cleanly (code 3) — on a headless host rely on the `verify-deck.mjs --strict` gate instead.
 
@@ -206,11 +249,23 @@ Every delivered HTML deck carries a self-contained right-click menu, inlined by 
 Rules for the agent:
 
 - Run `add-deck-menu.mjs` after `embed-assets.mjs` and before `verify-deck.mjs --strict` (which requires the menu unless `--no-deck-menu` is passed because the user declined it). Re-running upgrades an older block.
+- Then run `write-rebuild-script.mjs` so the deck is delivered with its `<deck>.rebuild.mjs` (see "Rebuild script"): the menu block is a snapshot of the editing tools at delivery time, and the rebuild script is how the recipient gets the newer tools into that deck later without regenerating it.
 - The HTML panel's source editor (under the Tree tab) is the one deliberate exception to the brand guardrails below: a viewer who edits the source can set any colour, font or attribute. It exists at the user's explicit request (2026-09-03) for people who know what they are doing; it never brings in scripts, and every change stays a recorded, reversible edit. Do not point ordinary recipients to it.
 - The menu edits **text, text formatting, geometry, stacking order, grouping and shape styling only** (what a viewer can fix on the spot: a word, a bold run, a bigger title, a card that should be wider or teal, a photo panel nudged or rounded, a row of cards re-aligned or spread evenly, a badge brought in front of a photo). Fonts are limited to the design system's stacks and colours to the NBG palette, so a viewer cannot leave the brand. Images, new elements and structure stay the skill's job; if the user wants those changed, regenerate the deck. Shape changes never re-flow neighbours: a viewer who widens one card in a row uses *Distribute* (or moves the next card) to restore the spacing, and the overlap rules of this skill still apply to the result. Ordering and grouping never restructure the DOM — they are inline `z-index` / `position` and a `data-nbg-group` attribute, so every element path stays valid.
 - The assistant panel is the viewer's tool: the agent never enters endpoint URLs or API keys for a recipient, never bakes them into a deck, and does not rely on the panel for its own work (the agent authors decks with the skill itself). When a user asks how to use it, explain the Settings view (provider, URL, model, key) and that the key stays in their browser. Screenshots need a desktop Chromium browser (tab capture); a provider that rejects browser calls (CORS) needs a gateway.
 - The CLI exporter prints the file on disk, not a viewer's unsaved edits. To deliver a PDF of an edited deck, export the saved `-edited.html` copy.
-- When handing over a deck, tell the user in one line: double-click any text to edit it (Enter applies, Esc cancels); right-click for *Resize / move shape* (Shift+click or Shift+drag selects several; the toolbar orders, aligns, distributes and groups them), *Ask the assistant* (an AI request with the slide's screenshot / source, the selection and a clipboard image — the viewer enters their own endpoint and key), *Export to PDF* and *Save edited copy*.
+- When handing over a deck, tell the user in one line: double-click any text to edit it (Enter applies, Esc cancels); right-click for *Resize / move shape* (Shift+click or Shift+drag selects several; the toolbar orders, aligns, distributes and groups them), *Ask the assistant* (an AI request with the slide's screenshot / source, the selection and a clipboard image — the viewer enters their own endpoint and key), *Export to PDF* and *Save edited copy* — and that `node <deck>.rebuild.mjs` refreshes the deck's editing tools (and its PDF) after this skill is updated.
+
+## Rebuild script (re-embedding newer editing tools)
+
+Every delivered deck is three files: `<deck>.html`, `<deck>.pdf` and **`<deck>.rebuild.mjs`**, written by `scripts/write-rebuild-script.mjs` once the menu block is in the deck. The editing tools a deck carries (the inlined `nbg-deck-menu-script` block: menu, toolbars, structure panel, assistant, print layout) are a snapshot of the skill at delivery time; the skill keeps evolving, the file does not. The rebuild script is how a deck that was handed over months ago receives the current tools **without being regenerated**:
+
+- `node <deck>.rebuild.mjs` — keeps a copy of the deck as it was (`<deck>.backup-<stamp>.html`; `--no-backup` skips it), replaces the editor block with the one the skill ships now — same `add-deck-menu.mjs` path, same configuration the deck was delivered with, the slides untouched byte for byte — runs `verify-deck.mjs --strict` and re-exports the PDF with `export-pdf.mjs` (the recorded `--selector` / `--size`, if any). Exit 0 = rebuilt, 1 = error or gate failed, 3 = HTML rebuilt but no browser on that host for the PDF (the same rule as the exporter: run it where Chrome/Chromium/Edge exists).
+- `node <deck>.rebuild.mjs --check` — only reports the block version in the deck against the skill's (`RESULT: CURRENT`, exit 0, or `REBUILD NEEDED`, exit 1); writes nothing.
+- `node <deck>.rebuild.mjs other.html` rebuilds another copy with the same settings — e.g. the `-edited.html` copy a viewer saved (its PDF lands next to it); `--no-pdf` / `--pdf <file>` control the export.
+- **Where the skill's scripts are found** — `--scripts <dir>`, else `NBG_DESIGN_SCRIPTS`, else the directory recorded when the script was written (the skill's `scripts/` folder at that time). The directory must hold `add-deck-menu.mjs`, `verify-deck.mjs`, `export-pdf.mjs` and `lib/`; anything else is an error naming what was tried — the script never substitutes another location. Tell a recipient whose skill lives elsewhere to set `NBG_DESIGN_SCRIPTS` (or pass `--scripts`) to the installed plugin's `skills/nbg-design/scripts` directory.
+- The script records, in plain JSON at its top: the deck and PDF file names relative to itself (the delivery folder can move as a whole), the scripts directory, the embedded block version, the plugin version (when the skill sits in its plugin checkout) and the block's configuration. It is generated per deck (`--pdf <file>`, `--no-pdf`, `--selector`, `--size`, `-o <script>` at generation time) and must be regenerated if the deck is regenerated.
+- It does not apply to page-mode files made with the workspace's `html-editor` skill (a page has no slide PDF); the generator refuses those and points to `add-editor.mjs`.
 
 ## PDF output (export from the HTML deck)
 
@@ -223,7 +278,7 @@ A PDF deliverable is **always derived from the finished, verified HTML deck** �
    `node "<skill-root>/scripts/export-pdf.mjs" <deck>.html [-o <deck>.pdf]`
    The script opens the deck in headless Chrome/Chromium/Edge (auto-detected; `--browser <path>` or `NBG_BROWSER` / `CHROME_BIN` to override), lifts the deck's navigation and viewport-scaling layer without touching any slide's own CSS, makes every top-level `.slide` visible in flow, settles fonts/images/animations, and prints one page per slide at the slide's own box (20 × 11.25 in for the 1920×1080 artboard, zero margins, backgrounds forced). It then verifies that the PDF page count equals the slide count and exits non-zero on any mismatch.
 3. Inspect: rasterise a few pages (`pdftoppm -r 72 -png <deck>.pdf <prefix>` when poppler is available, otherwise open the PDF) and **read them** next to the browser screenshots. Cover, one divider, one dense content slide and the last slide are the minimum set. Anything that differs from the HTML render — a missing background, an animation stuck at its start state, a clipped card, a re-flowed line — is a defect to fix in the deck, then re-export.
-4. Deliver the PDF together with the HTML it was exported from (unless the user explicitly wants only the PDF) and report the exporter output line (slides / pages / page box).
+4. Deliver the PDF together with the HTML it was exported from (unless the user explicitly wants only the PDF) and the deck's `<deck>.rebuild.mjs` (written after the menu, see "Rebuild script"; when the PDF has another name or place, generate the script with `--pdf <file>` so the rebuild refreshes that file), and report the exporter output line (slides / pages / page box).
 
 ### Export from the in-deck menu
 
@@ -251,6 +306,7 @@ Scripts (zero-dependency Node, see `scripts/README.md`):
 - `scripts/screenshot-deck.mjs` — per-slide PNGs at the required viewports (needs a browser).
 - `scripts/export-pdf.mjs` — HTML deck → PDF, one page per slide, aesthetics preserved (needs a browser).
 - `scripts/add-deck-menu.mjs` — inlines the right-click deck menu (Edit text / Export to PDF / Save edited copy) into a deck (idempotent; `--remove` strips it).
+- `scripts/write-rebuild-script.mjs` — writes the deck's `<deck>.rebuild.mjs`, delivered with the HTML and the PDF: re-embeds the skill's current editing tools into that deck, verifies it and re-exports its PDF (`--check` only reports).
 - `scripts/lib/find-browser.mjs` — shared Chrome/Chromium/Edge locator.
 - `scripts/lib/cdp.mjs` — shared DevTools-protocol client (launch, navigate, evaluate, print).
 - `scripts/lib/print-layout.js` — the print-layout shim shared by the exporter and the in-deck menu (browser JS).
@@ -280,6 +336,7 @@ Assets:
 - `NBG-Design/assets/photo-parthenon.jpeg` (+ `photo-parthenon.datauri.txt`)
 - `NBG-Design/assets/photo-skate.jpeg` (+ `photo-skate.datauri.txt`)
 - `NBG-Design/assets/photo-street.jpeg` (+ `photo-street.datauri.txt`)
+- Technology photography, 21 files `NBG-Design/assets/photo-<subject>-<n>.jpeg` (+ `.datauri.txt` each), where `<subject>` is one of `datacenter`, `team-analytics`, `network`, `chip`, `athens-dusk`, `security`, `developer` and `<n>` is `1`, `2` or `3` — see "Photography catalogue".
 - All `*.datauri.txt` files hold the ready-to-embed base64 data URI for the matching image (see "Image embedding (MANDATORY)").
 
 Presentation screenshots:
@@ -314,6 +371,7 @@ Before delivering NBG slide work:
 
 - For HTML output, run `node "<skill-root>/scripts/verify-deck.mjs" <deck>.html --strict` and confirm it passes. This is mandatory and works on a headless host. Never report a deck complete while it fails. (Embed assets with `scripts/embed-assets.mjs` first; see "Deterministic embedding & verification".)
 - For HTML output, confirm the right-click deck menu was added with `scripts/add-deck-menu.mjs` (the strict gate checks for it and warns when the block is older than the skill's) and tell the user how to use it (double-click to edit text; right-click for Resize / move shape, Export to PDF, Save edited copy), unless the user declined it.
+- For every deck with the menu, confirm `<deck>.rebuild.mjs` was written with `scripts/write-rebuild-script.mjs` after the menu (and after the PDF's name was settled: `--pdf` / `--no-pdf`), that `node <deck>.rebuild.mjs --check` reports `CURRENT`, and deliver it with the HTML and the PDF, telling the user it refreshes the deck's editing tools after a skill update.
 - Confirm every slide has a clear purpose.
 - Confirm colors match the bundled NBG palette.
 - Confirm the language is consistent with the request or the approved English default.

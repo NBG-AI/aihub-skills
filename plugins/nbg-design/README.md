@@ -47,6 +47,20 @@ Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-men
 - **Export to PDF** — choose *Save as PDF* in the browser's print dialog and get the same
   one-page-per-slide PDF as the CLI exporter, with no tooling installed.
 
+Every deck is delivered as three files: `<deck>.html`, `<deck>.pdf` and **`<deck>.rebuild.mjs`**
+(`scripts/write-rebuild-script.mjs`). The editing tools above are inlined into the HTML at delivery
+time; when this plugin is updated, `node <deck>.rebuild.mjs` embeds the new version of those tools
+into the deck (slides untouched, a backup kept), verifies it and re-exports the PDF — `--check` only
+reports whether a rebuild is needed. The script finds the skill through `--scripts`, `NBG_DESIGN_SCRIPTS`
+or the location recorded at delivery, and errors otherwise.
+
+Bundled photography: five lifestyle photos (fields, heart, Parthenon, skate, street) and 21
+technology photos — data centre, team analytics, abstract network, microchip, Athens at dusk,
+security, developer; three takes each, generated with the current OpenAI and Google image models
+in the NBG teal-and-cream palette. Every photo has a ready-to-embed data URI and a `{{PHOTO_…}}`
+token; `SKILL.md` → "Photography catalogue" describes each one so the right subject and orientation
+are picked per slide.
+
 ## Installation
 
 ```bash

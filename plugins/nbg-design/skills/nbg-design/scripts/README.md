@@ -30,7 +30,11 @@ node "<skill-root>/scripts/embed-assets.mjs" my-deck.html
 - Tokens map to asset files by lower-casing and turning `_` into `-`:
   `{{PHOTO_STREET}}` → `photo-street.datauri.txt`, `{{LOGO_KNOCKOUT}}` → `logo-knockout.datauri.txt`.
 - Available tokens: `{{LOGO_PRIMARY}}` `{{LOGO_KNOCKOUT}}` `{{LOGO_SMALL}}`
-  `{{PHOTO_FIELDS}}` `{{PHOTO_HEART}}` `{{PHOTO_PARTHENON}}` `{{PHOTO_SKATE}}` `{{PHOTO_STREET}}`.
+  `{{PHOTO_FIELDS}}` `{{PHOTO_HEART}}` `{{PHOTO_PARTHENON}}` `{{PHOTO_SKATE}}` `{{PHOTO_STREET}}`,
+  and the technology set `{{PHOTO_<SUBJECT>_<N>}}` with `<SUBJECT>` ∈ `DATACENTER`, `TEAM_ANALYTICS`,
+  `NETWORK`, `CHIP`, `ATHENS_DUSK`, `SECURITY`, `DEVELOPER` and `<N>` ∈ `1`, `2`, `3`
+  (e.g. `{{PHOTO_TEAM_ANALYTICS_2}}` → `photo-team-analytics-2.datauri.txt`). The catalogue with a
+  one-line description of every photo is in `SKILL.md` → "Photography catalogue".
 - Define each token **once** (e.g. a CSS `background-image: url("{{PHOTO_STREET}}")` class)
   and reuse the class, so the large URI appears only once in the file.
 - Fails loudly if a token has no matching asset or the asset isn't a `data:image/` URI.
@@ -464,6 +468,54 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 - The CLI exporter prints the file on disk, not a viewer's unsaved edits: to get a PDF of an
   edited deck, export the saved `-edited.html` copy.
 
+## 6. Rebuild script — `write-rebuild-script.mjs`
+
+The editor block a deck carries (section 5) is a snapshot of the editing tools at delivery time.
+This script writes the third deliverable, `<deck>.rebuild.mjs`, next to the deck: a self-contained
+Node script the recipient runs after the skill was updated, so the deck receives the current tools
+without being regenerated.
+
+```
+node "<skill-root>/scripts/write-rebuild-script.mjs" my-deck.html [-o <script.mjs>] [--pdf <file> | --no-pdf]
+                                                     [--selector <css>] [--size WxH]
+```
+
+- Requires the editor block in the deck (run `add-deck-menu.mjs` first; the old PDF-only block and
+  page-mode blocks are refused — a page has no slide PDF, use the workspace's `html-editor` skill
+  for those). Exit 0 = written, 1 = error, 2 = usage.
+- Records at the top of the generated script, as plain JSON: the deck and PDF names **relative to
+  the script** (the delivery folder can move as a whole; `--pdf` names another PDF, `--no-pdf`
+  records that none was delivered), this `scripts/` directory, the embedded block version, the
+  plugin version when the skill sits in its plugin checkout, the block's configuration
+  (`readMenuConfig`), and the exporter options (`--selector` — defaults to the block's `root` when
+  it is not `.slide` — and `--size`). Warns when the PDF does not exist yet.
+- Exports `buildRecord(deck, opts)`, `renderRebuildScript(record)`, `shippedBlockVersion()`,
+  `readPluginVersion()` for programmatic use.
+
+The generated `<deck>.rebuild.mjs`:
+
+```
+node my-deck.rebuild.mjs                    # rebuild the deck next to the script and its PDF
+node my-deck.rebuild.mjs --check            # report CURRENT (exit 0) / REBUILD NEEDED (exit 1); writes nothing
+node my-deck.rebuild.mjs --no-pdf           # HTML only
+node my-deck.rebuild.mjs --pdf out.pdf      # PDF to another path
+node my-deck.rebuild.mjs my-deck-edited.html --no-backup   # another copy, no backup
+node my-deck.rebuild.mjs --scripts <dir>    # the skill's scripts/ directory, explicitly
+```
+
+- Steps: backup (`<name>.backup-<yyyymmdd-hhmmss>.html`, unless `--no-backup`) → `addMenu(html,
+  recordedConfig)` imported from the resolved `add-deck-menu.mjs` (added / refreshed / upgraded from
+  vN / already current; the slides are untouched) → `verify-deck.mjs --strict` → `export-pdf.mjs
+  <deck> -o <pdf> [recorded options]`. Exit 0 = rebuilt, 1 = error or gate failed (the HTML is
+  already rebuilt; the backup holds the previous file), 2 = usage, 3 = HTML rebuilt but no browser
+  for the PDF.
+- **Scripts directory resolution** (highest priority first): `--scripts <dir>`, `NBG_DESIGN_SCRIPTS`,
+  the recorded directory. It must hold `add-deck-menu.mjs`, `verify-deck.mjs`, `export-pdf.mjs`,
+  `lib/deck-menu.js`, `lib/print-layout.js`; otherwise the script exits 1 naming the source and the
+  path. No other location is ever tried.
+- Windows: the script only uses `node:path`, `node:fs`, `node:child_process` and `process.execPath`;
+  it has not been run on Windows yet (see the issue register).
+
 ## Recommended workflow
 
 ```
@@ -471,10 +523,12 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
 node "<skill-root>/scripts/embed-assets.mjs"    my-deck.html
 node "<skill-root>/scripts/add-deck-menu.mjs"   my-deck.html            # standard: right-click menu (edit text / export PDF)
 node "<skill-root>/scripts/verify-deck.mjs"     my-deck.html --strict   # mandatory, headless-safe
+node "<skill-root>/scripts/write-rebuild-script.mjs" my-deck.html       # standard: my-deck.rebuild.mjs, delivered with the deck
 node "<skill-root>/scripts/screenshot-deck.mjs" my-deck.html            # optional, when a browser exists
 # then READ the PNGs and inspect them
 node "<skill-root>/scripts/export-pdf.mjs"      my-deck.html            # when a PDF was requested
 # then rasterise a few pages and READ them against the screenshots
+# deliver my-deck.html + my-deck.pdf + my-deck.rebuild.mjs
 ```
 
 `<skill-root>` is the directory that contains `SKILL.md`. Shared code under `scripts/lib/`:

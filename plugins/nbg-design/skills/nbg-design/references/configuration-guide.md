@@ -29,6 +29,9 @@ This YAML file is a Pi `@file` context bundle. It is not Pi native settings, and
 5. **Local browser executable for screenshot automation and PDF export**
    - `scripts/screenshot-deck.mjs` and `scripts/export-pdf.mjs` look for Chrome/Chromium/Edge in this order: `--browser <path>` flag (authoritative; a non-executable path is an error), `NBG_BROWSER`, `CHROME_BIN`, `CHROME_PATH`, `BROWSER` environment variables, the standard macOS/Linux install locations, then `PATH`.
    - The project does not define a committed fallback browser path. With no browser found the scripts exit with code 3: screenshots are skipped in favour of `verify-deck.mjs --strict`; a PDF cannot be produced on that host and must be exported where a browser exists.
+6. **Location of the skill's scripts for a delivered deck's rebuild script (`<deck>.rebuild.mjs`)**
+   - The generated rebuild script looks the nbg-design `scripts/` directory up in this order: `--scripts <dir>` flag (authoritative), the `NBG_DESIGN_SCRIPTS` environment variable, then the directory recorded in the script when it was written (where the skill was at delivery time). The directory must hold `add-deck-menu.mjs`, `verify-deck.mjs`, `export-pdf.mjs` and `lib/`; otherwise the script exits 1 naming the source and the path. No other location is tried.
+   - A recipient whose plugin is installed elsewhere sets `NBG_DESIGN_SCRIPTS` (or passes `--scripts`) to `<plugin>/skills/nbg-design/scripts`. The same variable is used by the development workspace's `html-editor` skill.
 
 ## Required Configuration Values
 
@@ -42,6 +45,7 @@ This YAML file is a Pi `@file` context bundle. It is not Pi native settings, and
 | Preferred language | Optional | Provide in the Pi prompt (`en`, `gr`, or `bi`). | `en` |
 | Output format / delivery target | Optional | Provide in the Pi prompt: `html`, `pdf` (exported from the HTML deck by `scripts/export-pdf.mjs`). PowerPoint is out of scope. | `html` |
 | Browser executable path | Required only for automated screenshot capture and PDF export | `scripts/screenshot-deck.mjs` and `scripts/export-pdf.mjs` auto-detect Chrome/Chromium/Edge at the usual macOS/Linux locations and on `PATH`; override with `--browser <path>` or the `NBG_BROWSER` / `CHROME_BIN` environment variables. No committed fallback path. | None (auto-detect) |
+| `NBG_DESIGN_SCRIPTS` (skill scripts directory) | Only when a delivered deck's `<deck>.rebuild.mjs` runs where the skill is not at the directory recorded in it | Set it (or pass `--scripts <dir>`) to the installed skill's `scripts/` directory — the one holding `add-deck-menu.mjs`, `verify-deck.mjs`, `export-pdf.mjs`. A directory without them is an error. | The directory recorded when the script was written |
 
 ## Deterministic Setup Process
 
