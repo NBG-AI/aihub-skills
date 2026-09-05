@@ -175,7 +175,12 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   the viewer dragged it — `menuPos`); `closeCode()` closes the menu; `codeIsOpen()` = menu open on a
   structure tab. The Toolbars section lists text / shape / assistant only. ⧉ (`data-action=mdetach`)
   detaches the menu itself — `detachPanel('menu')`, `'code'` and `'ai'` map to it — into a PiP / pop-up
-  window, structure and assistant included; ✕ / Esc there reattach and close it. **Assistant tab:**
+  window, structure and assistant included; ✕ / Esc there reattach and close it. **Picker (`#nbg-stack-pop`):**
+  when the menu is held away from the pointer (detached, or on a panel tab), `openMenu` refreshes the
+  menu and opens `openStackPop(x, y)` at the pointer: the `menuStack` hierarchy as rows (front-most /
+  encloses the one above / behind, outermost), *Edit text* when there is a text target, Cancel; a click
+  `selectSolo`s (Shift+click adds), rows outline their element on hover, Esc / a click elsewhere / a
+  scroll close it; it is in `OURS` and hidden while capturing / printing. **Assistant tab:**
   the assistant panel (`#nbg-ai`) is embedded the same way (`.nbg-embedded` keeps its own view tabs
   but hides its title, grip, ⧉ ▾ ✕); `openAi(view)` → `openMenuTab('ai')`; `closeAi()` closes the
   menu; `aiIsOpen()` = menu open on the Assistant tab; the Toolbars section lists text / shape only;

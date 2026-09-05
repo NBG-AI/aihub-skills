@@ -1,5 +1,7 @@
 # Project Functions
 
+> **Superseded (2026-09-05).** The context file `config/pi-agent-nbg-design.yaml` this document describes was folded into `SKILL.md` and removed; every rule, default, palette token, template and asset path it held now lives there. The text below is kept as design history.
+
 ## Pi Agent NBG Presentation Configuration
 
 ### Function

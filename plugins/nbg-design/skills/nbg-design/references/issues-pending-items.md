@@ -2,18 +2,6 @@
 
 ## Pending Items
 
-### Medium — Confirm whether "NPG Design" was intended to mean `NBG-Design/`
-- Detected: 2026-06-03
-- Context: The original request mentioned an "NPG Design" folder, but the project contains `NBG-Design/` and no local `NPG Design/` folder.
-- Current handling: `config/pi-agent-nbg-design.yaml` documents the ambiguity and uses `NBG-Design/` based on local evidence.
-- Resolution condition: User confirms the intended folder name/path.
-
-### Medium — Confirm final presentation workflow and output format
-- Detected: 2026-06-03
-- Context: Pi Agent does not have a native YAML settings schema; the created YAML is a context/config bundle intended for `@file` usage. The final output format for generated presentations was initially not specified.
-- Current handling: User confirmed on 2026-06-03 that unspecified deck output format should default to HTML. Technical research for the portability work confirmed the YAML behaves as Pi `@file` context text when used through the CLI. The YAML still needs confirmation only for whether a custom Pi extension/workflow will consume or parse it structurally.
-- Resolution condition: User confirms whether a custom Pi extension/workflow will consume the YAML.
-
 ### Medium — Confirm target operating systems for deterministic setup validation
 - Detected: 2026-06-04
 - Context: The portable setup guide is documentation/checklist based and uses shell examples that are straightforward on macOS/Linux. Windows support may require different command quoting or a different validation script approach.
@@ -40,6 +28,12 @@
 - Scope: `config/pi-agent-nbg-design.yaml` only.
 
 ## Completed Items
+
+### 2026-09-05 — `config/pi-agent-nbg-design.yaml` folded into `SKILL.md` and removed
+- Detected: User asked whether the YAML was still current. It was a Pi-agent-era prose context file that no script parsed; `SKILL.md` told the model to read it first, so it was a second copy of the skill's rules that drifted one release behind every menu change (it still described the structure panel and the assistant as separate floating panels after they became tabs of the menu), and its `pi_runtime`, "NPG Design" naming note and `out_of_scope_by_default` sections described a packaging and folders that no longer exist.
+- Solution: Everything not already in `SKILL.md` was moved there — a "Design-system reference" section (brand facts, the palette with hex values and roles, the style principles, the nine-template catalog with recommended uses), the supported language codes (`en`/`gr`/`bi`), the `show_logo` default, the do-not-guess list, the no-credentials rule, the recommended viewport-fit pattern (`visualViewport`, top-left scaling, wrapper sizing), the layout-collision authoring checks, the optional viewports and screenshot filename convention, the exporter's change/never-change contract with its extra flags, and the optional `pdfinfo` / `pdftotext` checks. The YAML and the now-empty `config/` folder were deleted; the two reference documents that described it carry a superseded note; the "NPG Design" and "custom Pi extension consumes the YAML" pending items were closed with it.
+- Affected files: `SKILL.md`, `config/pi-agent-nbg-design.yaml` (removed), `references/configuration-guide.md`, `references/project-functions.MD`, this register.
+- Verification: `grep` over the plugin finds no remaining reference to the YAML outside the historical reference documents; `SKILL.md` renders as valid Markdown with the frontmatter intact.
 
 ### 2026-09-03 — AI assistant panel (skill v1.13.0, block v9)
 - Detected: User request — a toolbar to submit a request to an LLM with a screenshot of the current slide, the slide's complete source and any image in the clipboard (each behind a checkbox); the selected element's source as well; a drop-down of prompts (predefined and user-defined with short names, editable, deletable, stored locally) plus free instructions; the reply shown in the panel or applied as the replacement of the selected element; providers Anthropic, Azure Anthropic, OpenAI-compatible, Azure OpenAI, DeepSeek 4; endpoint and key entered by the viewer and stored in the browser (option 1 of the three offered).

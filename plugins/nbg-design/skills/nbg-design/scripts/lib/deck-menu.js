@@ -58,6 +58,11 @@
  * does still acts on the deck; closing the window brings it back. The text toolbar stays attached: it
  * works on the deck window's live text selection.
  *
+ * The picker at the pointer: when the menu is detached into its own window, or open on a panel tab, a
+ * right-click on the deck opens a compact menu at the pointer with the same "Select at this point"
+ * hierarchy as the menu (front-most first, containers and shapes behind), plus Edit text; a click selects,
+ * Shift+click adds, Esc / a click elsewhere closes it.
+ *
  * Anchored toolbars: dragging the text or the shape toolbar anchors it — it opens at that spot from then
  * on (ui.anchor, per deck), shows ⚓ next to its grip; ⚓ or a double-click on the grip releases it, and it
  * follows the selection again.
@@ -194,7 +199,7 @@
   }
 
   /* ---------- target resolution ---------- */
-  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-text-tools, #nbg-shape-tools, #nbg-code, #nbg-ai, #nbg-ai-pop';
+  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-text-tools, #nbg-shape-tools, #nbg-code, #nbg-ai, #nbg-ai-pop, #nbg-stack-pop';
   var INLINE = /^(span|a|b|i|em|strong|small|code|sup|sub|mark|u|abbr|time|label|s|q)$/i;
   function hasOwnText(el) {
     for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
@@ -2772,6 +2777,10 @@
     '#nbg-deck-menu .nbg-mbody button b{display:block;font-weight:600;color:' + INK + '}' +
     '#nbg-deck-menu .nbg-mbody button span{display:block;font-size:12px;color:' + MUTED + ';margin-top:2px}' +
     '#nbg-deck-menu .nbg-sep{height:1px;margin:4px 8px;background:rgba(0,56,65,.10)}' +
+    '#nbg-stack-pop{position:fixed;z-index:2147483647;min-width:260px;max-width:360px;max-height:calc(100vh - 16px);overflow-y:auto;padding:6px;background:#fff;color:' + INK + ';border:1px solid rgba(0,56,65,.14);border-radius:12px;box-shadow:0 12px 32px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:14px/1.35 ' + FONT + ';user-select:none;-webkit-user-select:none}' +
+    '#nbg-stack-pop[hidden]{display:none!important}#nbg-stack-pop .nbg-sub{padding:4px 10px 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + '}#nbg-stack-pop .nbg-sep{height:1px;margin:4px 8px;background:rgba(0,56,65,.10)}' +
+    '#nbg-stack-pop button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;padding:6px 10px;border-radius:8px;cursor:pointer;font:inherit}#nbg-stack-pop button:hover,#nbg-stack-pop button:focus-visible{background:' + CREAM + ';outline:none}' +
+    '#nbg-stack-pop button b{display:block;font-weight:600;color:' + INK + '}#nbg-stack-pop button span{display:block;font-size:12px;color:' + MUTED + ';margin-top:2px}#nbg-stack-pop button.nbg-pick{padding:6px 10px 6px 14px}#nbg-stack-pop button.nbg-pick b{font-weight:500;font-size:13px}#nbg-stack-pop button.nbg-pick-on b{font-weight:600;color:' + ACCENT + '}#nbg-stack-pop button.nbg-pick span{font-size:11px}#nbg-stack-pop .nbg-quiet{color:' + MUTED + '}' +
     '#nbg-deck-menu .nbg-quiet{color:' + MUTED + '}' +
     '#nbg-deck-menu .nbg-sub{padding:8px 10px 2px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + ';border-top:1px solid rgba(0,56,65,.10);margin-top:4px}' +
     '#nbg-deck-menu button.nbg-pick{padding:6px 10px 6px 14px}#nbg-deck-menu button.nbg-pick b{font-weight:500;font-size:13px}#nbg-deck-menu button.nbg-pick-on b{font-weight:600;color:' + ACCENT + '}' +
@@ -2834,7 +2843,7 @@
     '.nbg-ai .nbg-ap{display:flex;align-items:center;gap:4px;padding:3px 4px;border-radius:6px}.nbg-ai .nbg-ap.nbg-on{background:' + CREAM + '}.nbg-ai .nbg-apn{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}' +
     '.nbg-ai .nbg-aped{display:flex;flex-direction:column;gap:4px;border-top:1px solid rgba(0,56,65,.12);padding-top:6px}' +
     '.nbg-ai [hidden]{display:none!important}' +
-    '.nbg-capturing #nbg-deck-menu,.nbg-capturing #nbg-deck-toast,.nbg-capturing #nbg-shape-box,.nbg-capturing #nbg-sel-marks,.nbg-capturing #nbg-marquee,.nbg-capturing #nbg-hover,.nbg-capturing .nbg-panel{visibility:hidden!important}.nbg-capturing .nbg-editing{outline:none!important;box-shadow:none!important}' +
+    '.nbg-capturing #nbg-stack-pop,.nbg-capturing #nbg-deck-menu,.nbg-capturing #nbg-deck-toast,.nbg-capturing #nbg-shape-box,.nbg-capturing #nbg-sel-marks,.nbg-capturing #nbg-marquee,.nbg-capturing #nbg-hover,.nbg-capturing .nbg-panel{visibility:hidden!important}.nbg-capturing .nbg-editing{outline:none!important;box-shadow:none!important}' +
     '.nbg-panel{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:2px;padding:4px 6px;background:#fff;color:' + INK + ';' +
     'border:1px solid rgba(0,56,65,.14);border-radius:10px;box-shadow:0 10px 28px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:13px/1 ' + FONT + ';user-select:none;-webkit-user-select:none;max-width:calc(100vw - 16px);flex-wrap:wrap}' +
     '.nbg-panel[hidden]{display:none!important}' +
@@ -2863,7 +2872,7 @@
     '.nbg-panel .nbg-tclose{margin-left:2px;min-width:24px}.nbg-panel .nbg-tnote:empty{display:none}' +
     '.nbg-panel button svg{display:block;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}' +
     '.nbg-panel button svg .nbg-fill{fill:currentColor;stroke:none}' +
-    '@media print{#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-sel-marks,#nbg-marquee,#nbg-hover,.nbg-panel{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
+    '@media print{#nbg-stack-pop,#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-sel-marks,#nbg-marquee,#nbg-hover,.nbg-panel{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
   document.head.appendChild(style);
 
   var menu = null, menuTarget = null, menuShape = null, menuStack = [], menuSlide = null, menuPinned = false;   // pinned: stays open after a choice or a click elsewhere, movable by its header, keeps its place
@@ -3053,18 +3062,72 @@
     menu.addEventListener('pointerleave', function () { hoverEl(null); });
     document.body.appendChild(menu);
   }
+  /* ---------- the picker at the pointer: the menu's actions are not in front of the viewer (the menu is
+     detached into its own window, or open on a panel tab), so a right-click on the deck opens this compact
+     menu where the pointer is — the hierarchy under the pointer as the menu shows it, and Edit text ---------- */
+  var stackPop = null;
+  function openStackPop(x, y) {
+    var stack = menuStack.slice();
+    if (!stack.length && !menuTarget) { closeStackPop(); return false; }
+    if (!stackPop) {
+      stackPop = document.createElement('div'); stackPop.id = 'nbg-stack-pop'; stackPop.setAttribute('role', 'menu'); stackPop.setAttribute('aria-label', 'Select at this point');
+      stackPop.addEventListener('click', function (e) {
+        var b = e.target.closest('button'); if (!b) return;
+        e.preventDefault(); e.stopPropagation();
+        var a = b.getAttribute('data-action');
+        if (a === 'edit') { var t = stackPop.__target; closeStackPop(); if (t) startEdit(t, false); return; }
+        if (a === 'close') { closeStackPop(); return; }
+        var el = stackPop.__stack[Number(b.getAttribute('data-i'))]; closeStackPop();
+        if (!el || !el.isConnected) return;
+        if (e.shiftKey && shape) addToSelection(el); else { selectSolo(el, true); toast(describe(el) + ' selected — Tab / Shift+Tab step out / in.', 2000); }
+      });
+      stackPop.addEventListener('pointerover', function (e) { var b = e.target.closest('button[data-i]'); hoverEl(b ? stackPop.__stack[Number(b.getAttribute('data-i'))] : null); });
+      stackPop.addEventListener('pointerleave', function () { hoverEl(null); });
+      stackPop.addEventListener('pointerdown', function (e) { e.stopPropagation(); });
+      stackPop.addEventListener('contextmenu', function (e) { e.preventDefault(); e.stopPropagation(); });
+      stackPop.addEventListener('keydown', function (e) {
+        e.stopPropagation();
+        if (e.key === 'Escape') { e.preventDefault(); closeStackPop(); }
+        else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); var items = Array.prototype.slice.call(stackPop.querySelectorAll('button')), i = items.indexOf(document.activeElement); items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus({ preventScroll: true }); }
+      });
+      document.body.appendChild(stackPop);
+    }
+    stackPop.__stack = stack; stackPop.__target = menuTarget;
+    var h = '<div class="nbg-sub">' + (stack.length > 1 ? 'Select at this point · ' + stack.length + ' stacked' : 'At this point') + '</div>';
+    if (menuTarget) h += '<button type="button" role="menuitem" data-action="edit"><b>Edit text</b><span>Edit this text in place — Enter applies, Esc cancels.</span></button>';
+    stack.forEach(function (el, i) {   // front-most first: nested parts, their containers, shapes behind — as in the menu
+      var rel = i === 0 ? 'front-most' : el.contains(stack[i - 1]) ? 'encloses the one above' : 'behind the one above';
+      h += '<button type="button" role="menuitem" data-i="' + i + '" class="nbg-pick' + (el === menuShape ? ' nbg-pick-on' : '') + '"><b>' + (el === menuShape ? '● ' : '○ ') + esc(describe(el)) + '</b><span>' + rel + (i === stack.length - 1 ? ' · outermost' : '') + ' — click selects it alone, Shift+click adds it</span></button>';
+    });
+    h += '<div class="nbg-sep"></div><button type="button" role="menuitem" data-action="close" class="nbg-quiet"><b>Cancel</b></button>';
+    stackPop.innerHTML = h; stackPop.hidden = false;
+    stackPop.style.left = '0px'; stackPop.style.top = '0px';
+    var r = stackPop.getBoundingClientRect();
+    stackPop.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+    stackPop.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+    var first = stackPop.querySelector('button'); if (first) first.focus({ preventScroll: true });
+    return true;
+  }
+  function closeStackPop() { if (stackPop && !stackPop.hidden) { stackPop.hidden = true; stackPop.__stack = []; stackPop.__target = null; hoverEl(null); } }
+  function stackPopOpen() { return !!(stackPop && !stackPop.hidden); }
+
   function openMenu(x, y, target, shapeTarget) {
     ensureMenu();
+    closeStackPop();
     menuTarget = target || null; menuShape = shapeTarget || null;
     lastPoint = { x: x, y: y };
     menuSlide = slideAtPoint(x, y);
     menuStack = shapeStack(x, y);
     if (menuShape && menuStack.indexOf(menuShape) < 0) menuStack.unshift(menuShape);
-    var keep = menuHeld() && !menu.hidden;   // a held menu (pinned, on a structure tab, detached) stays where it is, on its tab; its items follow the new target
+    var keep = menuHeld() && !menu.hidden;   // a held menu (pinned, on a panel tab, detached) stays where it is, on its tab; its items follow the new target
     if (!keep) { menuTab = 'menu'; hideTabbed(); }
     renderMenu();
     menu.hidden = false;
-    if (keep) { if (!detachedPanel(menu)) clampMenu(); }
+    if (keep) {
+      if (!detachedPanel(menu)) clampMenu();
+      // the menu's actions are not at the pointer (another window, or a panel tab): a picker opens there instead
+      if (detachedPanel(menu) || menuTab !== 'menu') { openStackPop(x, y); return; }
+    }
     else {
       menu.style.left = '0px'; menu.style.top = '0px';
       var r = menu.getBoundingClientRect();
@@ -3088,6 +3151,7 @@
   // force: an explicit close (Cancel, Esc) — otherwise a pinned menu refreshes instead of closing
   function closeMenu(force) {
     if (!menu || menu.hidden) return;
+    closeStackPop();
     if (menuHeld() && !force) { refreshMenu(); return; }
     hoverEl(null);
     hideTabbed(); menuTab = 'menu';
@@ -3136,6 +3200,7 @@
   function inTools(t) { return !!(tools && t && tools.contains(t)); }
   document.addEventListener('pointerdown', function (e) {
     if (menu && !menu.hidden && !menu.contains(e.target) && !menuHeld()) closeMenu();
+    if (stackPop && !stackPop.hidden && !stackPop.contains(e.target)) closeStackPop();
     if (editing && !editing.el.contains(e.target) && !inTools(e.target) && !(menu && menu.contains(e.target))) commitEdit();
     // Shift+click / Shift+drag (and Ctrl/Cmd+click with a selection) select shapes instead of deselecting
     lastPoint = { x: e.clientX, y: e.clientY };
@@ -3163,6 +3228,7 @@
   }, true);
   ['keydown', 'keyup', 'keypress'].forEach(function (type) {
     document.addEventListener(type, function (e) {
+      if (stackPop && stackPop.contains(e.target)) return;   // the picker handles its own keys
       if (editing) {
         if (inTools(e.target) || inCode(e.target) || inAi(e.target) || inAiPop(e.target)) return;   // the panels' inputs handle their own keys
         // keep the deck's shortcuts (arrows, space, Home/End…) from firing while typing
@@ -3224,7 +3290,7 @@
     }, true);
   });
   window.addEventListener('resize', function () { if (menuHeld()) { if (menu && !menu.hidden) { clampMenu(); if (menuTab !== 'menu') applySplit(); } } else closeMenu(); });
-  window.addEventListener('scroll', function () { if (!menuHeld()) closeMenu(); }, true);
+  window.addEventListener('scroll', function () { if (!menuHeld()) closeMenu(); closeStackPop(); }, true);
   window.addEventListener('beforeunload', function () { if (editing) commitEdit(); });
 
   loadStored();
@@ -3247,6 +3313,7 @@
       groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes,
     },
     toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { if (k === 'code' || k === 'ai') k = 'menu'; return isDetached(k) ? detached[k] : null; } },
+    picker: { isOpen: stackPopOpen, close: closeStackPop },
     menu: { open: function (x, y) { openMenu(x === undefined ? window.innerWidth / 2 : x, y === undefined ? window.innerHeight / 2 : y, null, null); return true; }, close: function () { closeMenu(true); return true; }, isOpen: function () { return !!(menu && !menu.hidden); }, tab: function (t) { if (t !== undefined) setMenuTab(t); return menuTab; }, pinned: function (on) { if (on !== undefined && menu) { menuPinned = !!on; if (!menu.hidden) refreshMenu(); } return menuPinned; }, held: menuHeld, detach: function (w) { return detachPanel('menu', w); }, reattach: function () { return reattachPanel('menu'); } },
     ai: {
       open: openAi, close: closeAi, isOpen: aiIsOpen, view: function (v) { if (!ai) buildAi(); if (v) setAiView(v); return aiView; },

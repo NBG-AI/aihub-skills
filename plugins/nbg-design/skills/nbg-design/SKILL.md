@@ -5,7 +5,7 @@ description: Use when creating National Bank of Greece (NBG) styled presentation
 
 # NBG Design
 
-This skill packages the NBG Presentation Design System as a user-level Pi skill so it can be used from any working directory.
+This skill packages the NBG Presentation Design System as a self-contained skill so it can be used from any working directory. This file is the single source of the skill's behaviour, defaults, asset list and guardrails; there is no separate configuration file to read.
 
 ## First step when this skill is used
 
@@ -13,10 +13,9 @@ Resolve all paths below relative to this skill directory, the directory that con
 
 Before generating final slide output, read these bundled resources:
 
-1. `config/pi-agent-nbg-design.yaml` — canonical NBG presentation behavior, defaults, asset list, and guardrails.
-2. `NBG-Design/NBG Design System.html` — visual design-system reference.
-3. `NBG-Design/slide-templates.jsx` — reusable 1920×1080 slide templates and component patterns.
-4. `NBG-Design/tweaks-panel.jsx` — bundled tweak/edit helper reference when inspecting template host behavior.
+1. `NBG-Design/NBG Design System.html` — visual design-system reference.
+2. `NBG-Design/slide-templates.jsx` — reusable 1920×1080 slide templates and component patterns.
+3. `NBG-Design/tweaks-panel.jsx` — bundled tweak/edit helper reference when inspecting template host behavior.
 
 Use the bundled assets in `NBG-Design/assets/` and the bundled presentation screenshots in `NBG-Design/screenshots/` as visual references.
 
@@ -28,16 +27,64 @@ For each deck or slide request, require:
 - target audience;
 - desired slide count or depth.
 
-Ask the user for missing required inputs instead of inventing them.
+Ask the user for missing required inputs instead of inventing them. Never guess the topic, the audience, the slide count, or whether the bundled design-system source files may be modified.
 
 Approved defaults:
 
-- If no deck language is specified, use English (`en`).
+- If no deck language is specified, use English (`en`). The design system supports `en` (English), `gr` (Greek) and `bi` (bilingual); any other value must come from the user.
 - If no final output format is specified, use HTML (`html`).
+- The NBG logo is shown (`show_logo: true`) unless the user asks to hide it.
 
 Supported output formats: `html` (default) and `pdf` (always exported from the finished HTML deck — see "PDF output"). **PowerPoint (.pptx) is out of scope**: this skill produces HTML presentations and their PDF export only. If PowerPoint is requested, say so plainly and deliver the HTML deck (and its PDF) instead — never improvise a conversion. A request for "a PDF", "PDF version", "print version", or "send as PDF" selects `pdf`.
 
 Do not create any other fallback configuration values unless the user explicitly approves the exception.
+
+The skill holds no credentials. API keys for the in-deck assistant (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`, …) are the viewer's and live only in their browser; never write a key, token or endpoint secret into this skill, into a deck, or into a saved copy.
+
+## Design-system reference
+
+Facts about the bundled system (source: `NBG-Design/NBG Design System.html`):
+
+| Item | Value |
+| --- | --- |
+| Brand | National Bank of Greece — *NBG Presentation Design System* v1.0 |
+| Audience | Internal presentations |
+| Format | 16:9, 1920×1080 artboard; distilled from a 205-slide master deck |
+| Typography | Aptos for everything, with a system fallback when Aptos is absent; never swap the deck's font stack |
+| Languages | `en`, `gr`, `bi` |
+| Default accent | deep teal `#003841` |
+
+Palette (the only colours a deck, and the in-deck formatting toolbar, may use):
+
+| Token | Hex | Role |
+| --- | --- | --- |
+| deep teal | `#003841` | primary accent, dark panels, covers, section openers |
+| teal | `#007B85` | secondary accent |
+| bright cyan | `#00ADBF` | highlight accent |
+| electric cyan | `#00CFE7` | highlight accent, sparingly |
+| black | `#0A1416` | body text on light backgrounds |
+| grey 1 | `#BEC1BE` | rules, muted surfaces (design-system `--grey-1`) |
+| grey 2 | `#939793` | secondary text (design-system `--grey-2`) |
+| cream | `#F5F8F6` | light page background |
+| white | `#FFFFFF` | text on dark panels, cards on cream |
+
+The in-deck formatting and shape toolbars offer the same palette (their *Grey* is `#5B6B6D`, a mid tone for secondary text) plus *Default* and *Transparent*.
+
+Style principles: teal-led palette with quiet neutrals; large accent blocks on covers and section openers; content pages mostly monochromatic and calm; generous whitespace, clear hierarchy, restrained emphasis; NBG logo placement and brand tone preserved.
+
+Slide templates (`NBG-Design/slide-templates.jsx`, exposed as `window.<Name>`):
+
+| Template | Kind | Recommended use |
+| --- | --- | --- |
+| `Cover1` | cover | hero-image cover on a deep dark background |
+| `Cover2` | cover | neutral cover with a large right-side image card |
+| `Cover3` | cover | alternate cover treatment from the design system |
+| `DividerImage` | divider | section opener with photography |
+| `DividerDark` | divider | section opener on deep teal |
+| `DividerBright` | divider | section opener on a bright accent |
+| `ContentImageRight` | content | explanation with a photo panel on the right |
+| `ContentTwoColumn` | content | comparison or two-part explanation |
+| `ContentStat` | content | stat-led slide with a large figure |
 
 ## Design-system rules
 
@@ -61,8 +108,23 @@ For HTML slide or presentation output:
 - Use a viewport-fitting wrapper, explicit rendered width/height sizing, aspect-ratio constraint, CSS transform scaling, or equivalent robust approach.
 - When scaling a fixed 1920×1080 artboard, do not rely on the unscaled transformed element's layout box for page height.
 - Prevent unintended horizontal or vertical scrolling caused by the artboard itself.
-- Verify fit at common desktop/laptop viewport sizes, including 1366×768 and 1440×900.
-- When screenshot tooling is available, save screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, and visually inspect them before delivery. On a headless host with no browser (typical for SSH/Linux runs), the screenshot step cannot run — so the browser-free `scripts/verify-deck.mjs <deck>.html --strict` check is the mandatory minimum gate and must pass before delivery.
+- Verify fit at common desktop/laptop viewport sizes: 1366×768 and 1440×900 are required; 1920×1080 and 1280×720 are optional extras.
+- When screenshot tooling is available, save screenshots under `test_scripts/screenshots/` in the active working project, or another user-selected output folder, with descriptive filenames that carry the slide name and the viewport (`<slide-name>-<width>x<height>.png`, which is what `scripts/screenshot-deck.mjs` writes), and visually inspect them before delivery. On a headless host with no browser (typical for SSH/Linux runs), the screenshot step cannot run — so the browser-free `scripts/verify-deck.mjs <deck>.html --strict` check is the mandatory minimum gate and must pass before delivery.
+
+Recommended viewport-fit pattern:
+
+- Wrap the fixed-size slide in a viewport-sized frame with `overflow: hidden`.
+- Scale the 1920×1080 slide from the top-left origin by the smaller of `availableWidth / 1920` and `availableHeight / 1080`, then centre the scaled slide with translate offsets.
+- Measure the real viewport (`visualViewport.width/height` when available, otherwise `innerWidth/innerHeight`) so browser chrome and dynamic viewport height never cause vertical overflow, or use a CSS equivalent that sets both width and height explicitly.
+- Do not use CSS-only transform scaling that leaves the parent's layout height at the unscaled 1080 px.
+
+Layout-collision authoring checks (before finalising any slide's CSS coordinates):
+
+- Identify the bounding region of the header/title, each card row or grid, each callout, every decorative shape that approaches content, the footer/logo, and the page number.
+- Confirm those regions have positive separation on the 1920×1080 artboard; card rows and bottom callouts must not intrude into each other's vertical or horizontal space.
+- Decorative shapes may sit behind or near content only when they do not reduce readability, obscure text, or make card boundaries ambiguous.
+- With absolute positioning, compute or visually confirm each row's top/bottom coordinates and height rather than relying on z-index or source order.
+- If the safe zones cannot be preserved, revise the content model instead of squeezing elements together.
 - Protect the slide artboard from unintended element overlap: cards, text blocks, decorative shapes, logos, footers, page numbers, and grouped rows/columns must not collide unless the overlap is an explicit, content-safe brand accent.
 - Reserve non-overlapping layout zones for the title/header, main body, card grids/rows, bottom callouts, and footer/logo area. Keep at least 32px internal artboard spacing between adjacent content groups, and at least 72px clearance above footer/page-number elements unless the template defines a larger safe area.
 - When content does not fit without overlap, reduce copy, resize or simplify components, change the grid/row structure, or split the content across additional slides. Do not hide overflow, stack opaque elements on top of content, or rely on z-index as a workaround for a crowded layout.
@@ -121,7 +183,7 @@ Before delivering HTML, verify: (a) every `<img>`/`background-image` value start
 
 ## In-deck right-click menu (text editing & formatting, shape resizing, PDF export)
 
-Every delivered HTML deck carries a self-contained right-click menu, inlined by `scripts/add-deck-menu.mjs` (NBG-styled: white panel, teal accent rule, Aptos stack; Escape or a click outside closes it; right-clicking a link or form field keeps the browser's native menu; 📌 pins it — it then stays open, keeps its place, and can be dragged by its header; ⧉ detaches the whole menu, structure tabs included, into a window of its own). It adds ~150 KB and lives outside the slides, so it — and the selection frame and toolbars — never appears in the slide area of screenshots, in PDFs, or in the print layout.
+Every delivered HTML deck carries a self-contained right-click menu, inlined by `scripts/add-deck-menu.mjs` (NBG-styled: white panel, teal accent rule, Aptos stack; Escape or a click outside closes it; right-clicking a link or form field keeps the browser's native menu; 📌 pins it — it then stays open, keeps its place, and can be dragged by its header; ⧉ detaches the whole menu, structure tabs included, into a window of its own. While the menu is detached, or open on a panel tab, a right-click on the slide opens a compact **picker** at the pointer instead: the same *Select at this point* hierarchy — front-most first, containers and shapes behind — plus *Edit text*; a click selects, Shift+click adds, Esc closes it). It adds ~150 KB and lives outside the slides, so it — and the selection frame and toolbars — never appears in the slide area of screenshots, in PDFs, or in the print layout.
 
 - **Edit text** — offered when the right-click landed on text; **double-clicking any text on a slide does the same**. The element (the whole text block, so accent spans inside a title stay intact) becomes editable in place with a teal outline: typing, Backspace, Shift+Enter for a line break, Ctrl/Cmd+Z; **Enter or a click outside applies, Esc cancels**. Paste and drop insert plain text, and anything the browser wraps around typed text — other than the toolbar's own bold/italic/underline/strike tags — is unwrapped when the edit is applied. Deck keyboard shortcuts (arrows, space) are suppressed while editing.
 - **Formatting toolbar** — floats above the text while editing and can be dragged anywhere by its grip. A dragged toolbar is **anchored**: it opens at that spot from then on (remembered per deck in the browser) and shows ⚓ next to its grip; click ⚓ (or double-click the grip) to release it, and it follows the text again. The shape toolbar anchors the same way. **Every control applies to the selected text when there is a selection, and to the whole text block when there is none.** **B / I / U / S** (a selected run gets a semantic `<b>`/`<i>`/`<u>`/`<s>` tag), **A− / A+** and an exact **px size**, **font family** (the design system's stacks: Aptos, Inter, Helvetica, Arial, Georgia, Times New Roman, Courier New, or Default), **text colour** (the NBG palette only: deep teal, teal, bright cyan, electric cyan, black, grey, cream, white, or Default) — on a selection these wrap exactly the selected run in a styled span; on the block they become inline style (the block's line-height is kept proportional when the design fixed it in px). **Alignment** is always block-level. **Clear** removes the selection's tags and spans, or returns the whole block to its authored style. **Done** applies. Shortcuts: Ctrl/Cmd+B/I/U, Ctrl/Cmd+Shift+> and < for size. Block-level formatting is recorded as a `style` edit; selection-level tags and spans travel with the text edit. Esc reverts both.
@@ -174,6 +236,8 @@ Viewers of the HTML deck get the same export without any tooling: the in-deck me
 - **Fonts come from the exporting host.** The PDF embeds exactly the faces the browser resolved for the deck's font stack (`Aptos` → system fallback when Aptos is absent), so PDF and screenshots always agree with each other. If the deliverable must show Aptos, export on a host where Aptos is installed; do not swap the font stack in the deck.
 - **Headless host with no browser:** the exporter exits with code 3. Deliver the verified HTML, state plainly that the PDF could not be produced on this host, and give the one-line command to run where a browser exists. Never substitute a differently produced PDF.
 - The exporter must never be used to print a deck that fails `verify-deck.mjs --strict`.
+- What the exporter changes is only the host layer: navigation toggles (`.active` / `.hidden` / inline display / `[hidden]`) lifted, viewport-fit wrappers neutralised, non-slide chrome hidden, animations and transitions jumped to their end state, backgrounds forced with `print-color-adjust: exact`. It never changes a slide's own CSS, size, fonts, colours, copy, logos or photography; slides of a different size are reported, never resized. `--size WxH` overrides the page box only when the deck's slide box is wrong; `--settle <ms>` waits longer for fonts and images; `--debug-html <path>` dumps the printed DOM.
+- Optional extra checks: `pdfinfo <deck>.pdf` (page count; 1440 × 810 pt pages for the 1920×1080 artboard) and `pdftotext` to confirm the text is selectable.
 
 `<skill-root>` is the directory containing this `SKILL.md`. See `scripts/README.md` for the flags.
 
@@ -191,13 +255,13 @@ Scripts (zero-dependency Node, see `scripts/README.md`):
 - `scripts/lib/print-layout.js` — the print-layout shim shared by the exporter and the in-deck menu (browser JS).
 - `scripts/lib/deck-menu.js` — the in-deck menu: UI, in-place text editing, shape resize/move, persistence, saved copy, print orchestration (browser JS, inlined by `add-deck-menu.mjs`; configurable through `window.nbgDeckMenuConfig` — root selector, page mode — so the same editor serves non-deck HTML, see `scripts/README.md` §5).
 
-Core configuration and references:
+References (design history and the issue register; this `SKILL.md` is the authoritative behaviour):
 
-- `config/pi-agent-nbg-design.yaml`
 - `references/project-design.md`
 - `references/project-functions.MD`
 - `references/configuration-guide.md`
 - `references/issues-pending-items.md`
+- `references/refined-request-user-level-nbg-design-skill.md` and `references/codebase-scan-user-level-nbg-design-skill.md` — the original request and scan the skill was built from.
 
 Design-system files:
 

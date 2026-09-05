@@ -1,5 +1,7 @@
 # Configuration Guide
 
+> **Superseded (2026-09-05).** The context file `config/pi-agent-nbg-design.yaml` this document describes was folded into `SKILL.md` and removed; every rule, default, palette token, template and asset path it held now lives there. The text below is kept as design history.
+
 ## Purpose
 This guide defines the portable configuration and deterministic local setup process for using Pi Agent with the NBG presentation design-system context in this project.
 
