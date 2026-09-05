@@ -95,7 +95,8 @@
  *     visual selection both ways — selecting on the slide highlights and reveals the row, clicking a
  *     row selects that exact element on the slide (Shift+click adds, double-click edits its text,
  *     hovering outlines it, arrows / Enter navigate); edited elements carry a dot;
- *   - Code tab: the selected element's source, editable. Apply (Ctrl/Cmd+Enter) keeps the element's
+ *   - under the Tree (the former Code tab; the API still accepts 'code'): the selected element's source,
+ *     editable, below a draggable splitter whose position is remembered per deck (ui.split). Apply (Ctrl/Cmd+Enter) keeps the element's
  *     type, strips scripts / event handlers / javascript: URLs, and records the result as the usual
  *     'style' / 'group' / 'html' edits plus an 'attrs' edit (the other attributes as sorted JSON).
  *
@@ -305,8 +306,8 @@
 
   /* ---------- toolbar visibility: 'auto' (with the selection), 'on' (pinned), 'off' (closed by the viewer) ---------- */
   var UI_KEY = 'nbg-deck-ui:' + location.pathname;
-  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false };   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
-  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; } } catch (e) { /* storage unavailable */ }
+  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false, split: 0.55 };   // split: the Tree tab's share above the source editor   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
+  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; } } catch (e) { /* storage unavailable */ }
   // the structure and assistant panels collapse to their header row (the ▾ / ▸ button); remembered per deck
   function applyFold(k) {
     var panel = k === 'code' ? code : ai; if (!panel) return;
@@ -1646,12 +1647,24 @@
     if (pos) { code.style.left = Math.max(0, Math.min(pos.left, window.innerWidth - code.offsetWidth)) + 'px'; code.style.top = Math.max(0, Math.min(pos.top, window.innerHeight - code.offsetHeight)) + 'px'; return; }
     code.style.left = Math.max(8, window.innerWidth - code.offsetWidth - 8) + 'px'; code.style.top = '8px';   // docked to the right
   }
+  // Tree tab = the element tree above, the selected element's editable source below, a draggable
+  // splitter between them; its position (the tree's share) is remembered per deck (ui.split)
+  var codeSplit = null;
+  function applySplit() {
+    if (!code || code.hidden || codeTab !== 'tree' || ui.fold.code) return;
+    var total = code.clientHeight - code.querySelector('.nbg-ch').offsetHeight - codeSplit.offsetHeight;
+    if (total <= 0) return;
+    codeTree.style.flex = '0 0 ' + Math.round(Math.max(48, Math.min(total - 96, total * ui.split))) + 'px';
+  }
   function setTab(tab) {
+    if (tab === 'code') { tab = 'tree'; codeTab = tab; setTimeout(function () { if (codeRaw && !code.hidden) codeRaw.focus({ preventScroll: true }); }, 0); }   // the former Code tab: the source editor under the tree
     codeTab = tab; hoverEl(null);
     Array.prototype.forEach.call(code.querySelectorAll('[data-tab]'), function (b) { b.classList.toggle('nbg-on', b.getAttribute('data-tab') === tab); });
     codeTree.hidden = tab !== 'tree';
     code.querySelector('.nbg-cout').hidden = tab !== 'outline';
-    code.querySelector('.nbg-craw').hidden = tab !== 'code';
+    code.querySelector('.nbg-craw').hidden = tab !== 'tree';
+    codeSplit.hidden = tab !== 'tree';
+    if (tab === 'tree') applySplit(); else codeTree.style.flex = '';
     codeRefresh();
   }
   function buildCode() {
@@ -1661,8 +1674,7 @@
     code.innerHTML =
       '<div class="nbg-row nbg-ch"><span class="nbg-ct">' + UNIT + '</span>' +
       '<button type="button" data-tab="outline" class="nbg-on" title="The ' + AREA + '’s shapes — cards, text blocks, images — nested by containment: tick the boxes to select several, click a name to select it alone, Shift+click adds, double-click edits its text">Outline</button>' +
-      '<button type="button" data-tab="tree" title="The ' + AREA + '’s HTML elements — click selects one on the ' + AREA + ', Shift+click adds it, double-click edits its text, ▸ expands">Tree</button>' +
-      '<button type="button" data-tab="code" title="The selected element’s source — edit it and Apply (Ctrl/Cmd+Enter)">Code</button>' +
+      '<button type="button" data-tab="tree" title="The ' + AREA + '’s HTML elements — click selects one on the ' + AREA + ', Shift+click adds it, double-click edits its text, ▸ expands; the selected element’s source is editable below the tree (Apply: Ctrl/Cmd+Enter)">Tree</button>' +
       '<span class="nbg-cfill"></span>' +
       '<button type="button" data-c="refresh" class="nbg-tquiet" title="Re-read the ' + AREA + '">↻</button>' +
       '<button type="button" data-c="detach" class="nbg-tquiet nbg-detach" title="Detach into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the panel back">⧉</button>' +
@@ -1672,11 +1684,26 @@
       '<button type="button" data-o="all" class="nbg-tquiet" title="Select every top-level shape of the ' + AREA + ' (Ctrl/Cmd+A)">All</button>' +
       '<button type="button" data-o="none" class="nbg-tquiet" title="Clear the selection">None</button><span class="nbg-oc"></span></div><div class="nbg-olist" role="tree"></div></div>' +
       '<div class="nbg-cb nbg-ctree" hidden role="tree"></div>' +
+      '<div class="nbg-csplit" hidden role="separator" aria-orientation="horizontal" aria-label="Resize the tree and the source editor" title="Drag to resize the tree and the source editor — double-click to reset"></div>' +
       '<div class="nbg-cb nbg-craw" hidden><div class="nbg-cw"></div><textarea class="nbg-raw" spellcheck="false" wrap="off" aria-label="HTML source of the selected element"></textarea>' +
       '<div class="nbg-cf"><button type="button" data-c="apply" class="nbg-tdone" title="Apply the source to the element (Ctrl/Cmd+Enter) — recorded like every other edit">Apply</button>' +
       '<button type="button" data-c="revert" class="nbg-tquiet" title="Drop the unapplied changes">Revert</button>' +
       '<button type="button" data-c="copy" class="nbg-tquiet" title="Copy the source">Copy</button><span class="nbg-cs"></span></div></div>';
     codeTree = code.querySelector('.nbg-ctree'); codeOut = code.querySelector('.nbg-olist'); codeRaw = code.querySelector('.nbg-raw'); codeStatus = code.querySelector('.nbg-cs');
+    codeSplit = code.querySelector('.nbg-csplit');
+    codeSplit.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      var total = code.clientHeight - code.querySelector('.nbg-ch').offsetHeight - codeSplit.offsetHeight, top = codeTree.getBoundingClientRect().top;
+      if (total <= 0) return;
+      var drag = { id: e.pointerId };
+      try { codeSplit.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+      function move(ev) { if (ev.pointerId !== drag.id) return; var h = Math.max(48, Math.min(total - 96, ev.clientY - top)); ui.split = h / total; codeTree.style.flex = '0 0 ' + Math.round(h) + 'px'; }
+      function up(ev) { if (ev.pointerId !== drag.id) return; codeSplit.removeEventListener('pointermove', move); codeSplit.removeEventListener('pointerup', up); codeSplit.removeEventListener('pointercancel', up); uiSave(); }
+      codeSplit.addEventListener('pointermove', move); codeSplit.addEventListener('pointerup', up); codeSplit.addEventListener('pointercancel', up);
+    });
+    codeSplit.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); ui.split = 0.55; uiSave(); applySplit(); });
+    if (typeof ResizeObserver === 'function') new ResizeObserver(function () { applySplit(); }).observe(code);   // the panel's own resize handle, a detached window
     code.querySelector('.nbg-oq').addEventListener('input', function (e) { outFilter = e.target.value; renderOutline(); });
     makeMovable(code, placeCode, '.nbg-ch');   // the header's empty space and its "Slide N" title drag the panel too
     code.addEventListener('click', function (e) {
@@ -1751,12 +1778,13 @@
     if (tab) setTab(tab);
     // "Show structure / HTML" on an element selects it; opening the panel on its own selects nothing
     if (el && el === codeEl && !shape && !editing && codeEl.isConnected && !isRoot(codeEl)) selectSolo(codeEl, true);
-    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements; Code: the selected element’s source, editable. The selection is highlighted on the ' + AREA + ' and here.', 5000);
+    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements, with the selected element’s source editable below them (drag the bar between them). The selection is highlighted on the ' + AREA + ' and here.', 5000);
     return true;
   }
   function openCodePanel() {
     code.hidden = false;
     placeCode();
+    applySplit();
     codeRefresh();
     if (!codeObserver) {
       // deck-driven changes (slide switches, animations) and edits made elsewhere keep the tree current
@@ -2526,7 +2554,7 @@
     detached[k] = w;
     ui[k] = 'on'; uiSave();
     w.addEventListener('pagehide', function () { if (detached[k] === w) reattachPanel(k); });
-    w.addEventListener('resize', function () { if (k === 'shape') layoutShapeTools(); });
+    w.addEventListener('resize', function () { if (k === 'shape') layoutShapeTools(); else if (k === 'code') applySplit(); });
     syncToolbars();
     toast(TOOLBAR_NAMES[k] + ' detached into its own window — close that window (or ✕ / Esc in the panel) to bring it back.', 3500);
     return true;
@@ -2722,6 +2750,8 @@
     '.nbg-code .nbg-dragsurface{cursor:move}.nbg-code .nbg-dragsurface button,.nbg-code .nbg-dragsurface input{cursor:pointer}' +
     '.nbg-code .nbg-cfill{flex:1}.nbg-code .nbg-cb{flex:1;min-height:0;overflow:auto;font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}' +
     '.nbg-code .nbg-cb[hidden]{display:none!important}.nbg-code .nbg-ctree{padding:4px 0;outline:none}' +
+    '.nbg-code .nbg-csplit{flex:0 0 9px;position:relative;cursor:row-resize;touch-action:none;background:' + CREAM + ';border-top:1px solid rgba(0,56,65,.12);border-bottom:1px solid rgba(0,56,65,.12)}' +
+    '.nbg-code .nbg-csplit::after{content:"";position:absolute;left:50%;top:3px;width:32px;height:2px;margin-left:-16px;border-radius:1px;background:rgba(0,56,65,.35)}.nbg-code .nbg-csplit:hover{background:rgba(0,173,191,.14)}.nbg-code .nbg-csplit[hidden]{display:none!important}' +
     '.nbg-code .nbg-tr{white-space:nowrap;padding:1px 8px 1px 4px;cursor:default;color:' + INK + ';width:max-content;min-width:100%;box-sizing:border-box}.nbg-code .nbg-tr:hover{background:' + CREAM + '}' +
     '.nbg-code .nbg-tr.nbg-on{background:' + ACCENT + ';color:#fff}.nbg-code .nbg-tr.nbg-on .nbg-tag,.nbg-code .nbg-tr.nbg-on .nbg-an,.nbg-code .nbg-tr.nbg-on .nbg-av,.nbg-code .nbg-tr.nbg-on .nbg-tx{color:#fff}' +
     '.nbg-code .nbg-tr.nbg-cur{box-shadow:inset 0 0 0 1.5px ' + CYAN + '}.nbg-code .nbg-tr-text{color:' + MUTED + ';font-style:italic}' +
@@ -2819,7 +2849,7 @@
       h += item('tb-' + k, (on ? '☑ ' : '☐ ') + TOOLBAR_NAMES[k], on ? (mode === 'on' ? 'Shown and pinned — follows the selection. Click to hide it.' : 'Shown with the current selection. Click to hide it (it stays hidden until you show it again).') : (mode === 'off' ? 'Hidden by you. Click to show it and keep it visible.' : k === 'code' ? 'Opens on request (Show structure / Show HTML). Click to show it and keep it visible.' : k === 'ai' ? 'Opens on request (Ask the assistant). Click to show it and keep it visible.' : 'Appears with the selection. Click to show it now and keep it visible.'), 'nbg-pick' + (on ? ' nbg-pick-on' : ''));
     });
     if (!ui.menuFold && (ui.text !== 'auto' || ui.shape !== 'auto')) h += item('tb-auto', 'Automatic toolbars', 'Show the text and shape toolbars with the selection again (the default).', 'nbg-quiet');
-    h += item('structure', 'Show structure & HTML', 'One panel, three tabs: the ' + AREA + '’s shapes as an outline (tick boxes to select several), the HTML tree, and the editable source of ' + (menuShape || menuTarget ? describe(menuShape || menuTarget) : 'the selected element') + '. Right-click a row there to ask the assistant about it.', 'nbg-quiet');
+    h += item('structure', 'Show structure & HTML', 'One panel, two tabs: the ' + AREA + '’s shapes as an outline (tick boxes to select several), and the HTML tree with, below it, the editable source of ' + (menuShape || menuTarget ? describe(menuShape || menuTarget) : 'the selected element') + '. Right-click a row there to ask the assistant about it.', 'nbg-quiet');
     h += item('ai', 'Ask the assistant', 'Send a request to an AI model with a screenshot of the ' + AREA + ', its source, ' + (menuShape || menuTarget ? 'the source of ' + describe(menuShape || menuTarget) : 'the selected element’s source') + ' and a clipboard image — each optional. The reply is shown, or replaces the selected element (Ctrl/Cmd+Shift+L).', 'nbg-quiet');
     if (PAGE_MODE) h += item('pdf', 'Print / Save as PDF', 'Opens the print dialog — choose “Save as PDF”. The browser paginates the page; backgrounds are kept and the editor’s panels are hidden.');
     else h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');

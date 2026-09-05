@@ -310,7 +310,13 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   Esc (a click outside does not close it; it is movable by its header): the status and the answer are
   mirrored into it (`aiPopStatus`, `aiPopReply`; Copy, Undo after a replacement, *Open in the assistant
   panel* → `openAi('ask')`, where the `[data-ai=asked]` note and the same answer wait). The panel opens
-  on its own only when the settings are incomplete (`openAi('settings')`). The source attachments go
+  on its own only when the settings are incomplete (`openAi('settings')`). **Tree + source (v1.15.0):**
+  the structure panel has two tabs — the former Code tab is the bottom half of the Tree tab
+  (`.nbg-ctree` | `.nbg-csplit` | `.nbg-craw`); `setTab('code')` maps to `'tree'` and focuses the
+  editor; the splitter drags with pointer capture, `ui.split` (the tree's share, default 0.55,
+  clamped 0.1–0.9) is stored per deck in the `nbg-deck-ui:` record, `applySplit()` re-applies it on
+  open, on the panel's resize (ResizeObserver) and on a detached window's resize; double-click resets.
+  The source attachments go
   through `aiSourceHtml(el)`: `cleanOuterHtml` minus `<script>` elements (this editor's own block when the
   root is the body), `#nbg-deck-menu-style` and the runtime elements — otherwise a page-mode "Page source"
   weighed 300 KB of editor code and was refused. Both panels fold: `ui.fold = { code,
@@ -339,7 +345,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   deployments route, `image_url` parts with data URLs, Bearer or `api-key`) and `aiParseReply()`
   (text blocks / `choices[0].message.content`; a `refusal` stop reason and error envelopes become
   messages). *Replace*: `aiApplyReply()` unfences the reply, restores the placeholders and calls
-  `applySource()` — the function the Code tab's `applyRaw()` now shares (one root of the same
+  `applySource()` — the function the source editor's `applyRaw()` now shares (one root of the same
   tag, `sanitise()`, style / group / attrs / html records); `aiUndo()` re-applies the element's
   previous source. Keys: `nbg-deck-ai-key:<provider>` in `localStorage` or `sessionStorage` (`keyScope`),
   never inside the settings object; a pre-profile `nbg-deck-ai-key` is migrated to the active provider on load.
