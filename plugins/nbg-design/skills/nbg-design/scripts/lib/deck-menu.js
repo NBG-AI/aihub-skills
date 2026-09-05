@@ -5,7 +5,8 @@
  * (which defines nbgPreparePrintLayout / nbgRestorePrintLayout). Plain browser JavaScript.
  *
  * Text editing
- *   - double-click a text element inside a slide (or right-click it → "Edit text") to edit it
+ *   - double-click a text element inside a slide (or right-click it → "Edit text") to edit it; a
+ *     double-click on a shape or an image (no text under the pointer) selects it for resize / move;
  *     in place: the element becomes contenteditable (its inline markup and the slide's CSS are
  *     untouched; paste/drop insert plain text; anything the browser wraps around typed text
  *     other than the toolbar's b/i/u/s tags is unwrapped on commit); Enter or a click outside
@@ -65,7 +66,7 @@
  * block level; the shape toolbar shows the selection's geometry and style; the structure panel
  * follows the selection and the slide; a slide change drops an off-screen selection.
  *
- * AI assistant panel (menu "Ask the assistant", Ctrl/Cmd+Shift+L)
+ * AI assistant — the menu's Assistant tab (menu "Ask the assistant", Ctrl/Cmd+Shift+L; travels with the menu when detached)
  *   - a request to an LLM, supported — each behind a checkbox — by a screenshot of the current slide
  *     (tab capture, our UI hidden, cropped to the slide), the slide's full HTML source with the deck's
  *     stylesheet, the selected element's source, and an image from the clipboard (paste into the
@@ -86,7 +87,8 @@
  *     optionally for the tab only) and are never written into the deck; nothing is defaulted — a
  *     missing value blocks the request with a message.
  *
- * Structure / HTML panel (menu "Show structure" / "Show HTML", toolbar </>, Ctrl/Cmd+Shift+O / H)
+ * Structure / HTML panel — the Outline and Tree tabs of the menu itself (toolbar </>, Ctrl/Cmd+Shift+O / H;
+ * a structure tab pins the menu; the menu is detachable into its own window with ⧉, structure included)
  *   - Outline tab: only the shapes (cards, text blocks, images) nested by containment, with a
  *     checkbox per row for picking several, All / None, a text filter, kind icons, sizes, group
  *     badges; click a name selects it alone, Shift+click adds, Ctrl/Cmd+click toggles, Space
@@ -310,13 +312,13 @@
   try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; } } catch (e) { /* storage unavailable */ }
   // the structure and assistant panels collapse to their header row (the ▾ / ▸ button); remembered per deck
   function applyFold(k) {
-    var panel = k === 'code' ? code : ai; if (!panel) return;
+    return;   // the structure and the assistant live in the menu now — nothing folds
     var on = !!ui.fold[k]; panel.classList.toggle('nbg-folded', on);
     var b = panel.querySelector('[data-c=fold]'); if (b) { b.textContent = on ? '▸' : '▾'; b.title = on ? 'Expand this panel' : 'Collapse this panel to its header — click again to expand'; }
   }
-  function setFold(k, on) { ui.fold[k] = !!on; uiSave(); applyFold(k); if (k === 'code' && code && !code.hidden) placeCode(); if (k === 'ai' && ai && !ai.hidden) placeAi(); }
+  function setFold(k, on) { return; }   // kept for the API; the panels are tabs of the menu and do not fold
   function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ignore */ } }
-  var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML', ai: 'AI assistant' };
+  var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML', ai: 'AI assistant', menu: 'Menu & structure' };
   function textTargets() { return editing ? [editing.el] : sel.filter(hasOwnText); }   // what the text toolbar works on
   function toolbarWanted(k) {
     if (isDetached(k)) return true;                 // a detached panel stays in its window (idle when nothing applies)
@@ -326,17 +328,15 @@
     if (k === 'shape') return !!shape;
     return false;                                   // the structure and assistant panels open on request only
   }
-  function toolbarPanel(k) { return k === 'text' ? tools : k === 'shape' ? stools : k === 'code' ? code : ai; }
+  function toolbarPanel(k) { return k === 'text' ? tools : k === 'shape' ? stools : k === 'code' ? code : k === 'menu' ? menu : ai; }
   function toolbarVisible(k) { var p = toolbarPanel(k); return !!(p && !p.hidden); }
   function setToolbarMode(k, mode) { ui[k] = mode; uiSave(); syncToolbars(); }
   // show / hide every toolbar according to its mode and the current selection, then lay them out
   function syncToolbars() {
     if (toolbarWanted('text')) { if (!tools) buildTools(); tools.hidden = false; } else if (tools) { tools.hidden = true; toolsSel = null; }
     if (toolbarWanted('shape')) { if (!stools) buildShapeTools(); stools.hidden = false; } else if (stools) stools.hidden = true;
-    if (toolbarWanted('code')) { if (!code) buildCode(); if (code.hidden) openCodePanel(); } else if (code && !code.hidden) closeCodePanel();
-    if (toolbarWanted('ai')) { if (!ai) buildAi(); if (ai.hidden) openAiPanel(); } else if (ai && !ai.hidden) closeAiPanel();
     layoutTools(); layoutShapeTools(); layoutAi();
-    if (menuPinned && menu && !menu.hidden) refreshMenu();
+    if (menuHeld() && menu && !menu.hidden) refreshMenu();
   }
 
   /* ---------- text editing ---------- */
@@ -1558,7 +1558,10 @@
   function codeRefresh() {
     if (!code || code.hidden) return;
     cancelAnimationFrame(codeRaf);
-    codeRaf = requestAnimationFrame(function () { renderOutline(); renderTree(); renderRaw(); });   // both lists stay consistent whichever tab is shown
+    codeRaf = requestAnimationFrame(function () {
+      renderOutline(); renderTree(); renderRaw();   // both lists stay consistent whichever tab is shown
+      var ms = menu && menu.querySelector('.nbg-mslide'); if (ms) ms.textContent = codeSlideEl ? unitLabel(codeSlideEl) : '';
+    });
   }
   function codeFollow() {   // the element the panel follows: the primary selection or the text being edited
     var el = shape ? shape.el : editing ? editing.el : null;
@@ -1705,7 +1708,6 @@
     codeSplit.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); ui.split = 0.55; uiSave(); applySplit(); });
     if (typeof ResizeObserver === 'function') new ResizeObserver(function () { applySplit(); }).observe(code);   // the panel's own resize handle, a detached window
     code.querySelector('.nbg-oq').addEventListener('input', function (e) { outFilter = e.target.value; renderOutline(); });
-    makeMovable(code, placeCode, '.nbg-ch');   // the header's empty space and its "Slide N" title drag the panel too
     code.addEventListener('click', function (e) {
       e.stopPropagation();
       var b = e.target.closest('button');
@@ -1771,19 +1773,21 @@
   }
   function markCur(key) { var r = (codeTab === 'outline' ? codeOut : codeTree).querySelector('.nbg-tr[data-path="' + key + '"]'); if (r) r.classList.add('nbg-cur'); }
   function openCode(el, tab) {
-    if (!code) buildCode();
+    ensureMenu();
     if (el && el.nodeType === 1 && !el.closest(OURS)) codeEl = el;
     else if (!codeEl || !codeEl.isConnected) codeEl = shape ? shape.el : editing ? editing.el : null;
-    ui.code = 'on'; uiSave(); syncToolbars();
-    if (tab) setTab(tab);
+    var t = tab === 'code' ? 'tree' : tab || (codeTab === 'outline' ? 'outline' : 'tree');
+    openMenuTab(t);
+    if (tab === 'code') setTab('code');
     // "Show structure / HTML" on an element selects it; opening the panel on its own selects nothing
     if (el && el === codeEl && !shape && !editing && codeEl.isConnected && !isRoot(codeEl)) selectSolo(codeEl, true);
-    toast('Structure panel — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements, with the selected element’s source editable below them (drag the bar between them). The selection is highlighted on the ' + AREA + ' and here.', 5000);
+    toast('Structure — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements, with the selected element’s source editable below them (drag the bar between them). The selection is highlighted on the ' + AREA + ' and here. The menu stays pinned while a structure tab is shown.', 5000);
     return true;
   }
+  // the structure panel is a tab of the menu: shown when the menu is on the Outline / Tree tab
   function openCodePanel() {
+    ensureMenu();
     code.hidden = false;
-    placeCode();
     applySplit();
     codeRefresh();
     if (!codeObserver) {
@@ -1796,13 +1800,12 @@
   }
   function closeCodePanel() { code.hidden = true; hoverEl(null); if (codeObserver) codeObserver.disconnect(); }
   function closeCode() {
-    if (!code || code.hidden) return false;
-    if (isDetached('code')) reattachPanel('code');
-    setToolbarMode('code', 'off');
+    if (!codeIsOpen()) return false;
+    closeMenu(true);
     return true;
   }
-  function codeIsOpen() { return !!(code && !code.hidden); }
-  window.addEventListener('resize', function () { if (code && !code.hidden) { placeCode(); codeRefresh(); } });
+  function codeIsOpen() { return !!(menu && !menu.hidden && menuTab !== 'menu' && code && !code.hidden); }
+  window.addEventListener('resize', function () { if (code && !code.hidden) { applySplit(); codeRefresh(); } });
 
   /* ---------- AI assistant panel: a request to an LLM with the slide's screenshot / source, the selection's source and a clipboard image ---------- */
   var AI_SETTINGS_KEY = 'nbg-deck-ai-settings', AI_PROMPTS_KEY = 'nbg-deck-ai-prompts', AI_KEY_KEY = 'nbg-deck-ai-key';
@@ -1983,7 +1986,7 @@
     try {
       await new Promise(function (r) { requestAnimationFrame(function () { requestAnimationFrame(r); }); });
       var hiddenAt = performance.now();
-      var capWin = isDetached('ai') ? detached.ai : window;   // the click came from the assistant's window: that window holds the user activation
+      var capWin = isDetached('menu') ? detached.menu : window;   // the click came from the menu's window: that window holds the user activation
       try { stream = await capWin.navigator.mediaDevices.getDisplayMedia({ video: { displaySurface: 'browser' }, audio: false, preferCurrentTab: capWin === window, selfBrowserSurface: 'include', surfaceSwitching: 'exclude', monitorTypeSurfaces: 'exclude' }); }
       catch (e) { throw new Error('The screenshot was not allowed (' + (e && e.message ? e.message : e) + ') — allow the capture of this tab, or untick “Screenshot of the ' + AREA + '”.'); }
       track = stream.getVideoTracks()[0];
@@ -2228,8 +2231,6 @@
       '<span class="nbg-al">Remember the key</span><select data-set="keyScope"><option value="browser">In this browser (until you change it)</option><option value="tab">For this tab only</option></select>' +
       '<div class="nbg-af"><button type="button" data-c="std" class="nbg-tquiet" title="Fill in the provider’s standard endpoint and model where there is one">Standard values</button><button type="button" data-c="ssave" class="nbg-tdone">Save</button><button type="button" data-c="test" class="nbg-tquiet" title="Send a one-line test request">Test</button><span class="nbg-as" data-ai="sstatus"></span></div>' +
       '<div class="nbg-ahint">The key stays in this browser’s storage and is never written into the ' + WHOLE + ' file; the ' + WHOLE + ' talks to the endpoint directly from this page. Providers that do not allow calls from a browser need a gateway that does.</div></div>';
-    if (aiSettings.pos) panelPos[ai.id] = { left: aiSettings.pos.left, top: aiSettings.pos.top };   // where the viewer left it (placeAi clamps to the viewport)
-    makeMovable(ai, placeAi, '.nbg-ch', function (pos) { aiSettings.pos = pos; aiSaveSettings(); });
     ai.querySelector('[data-ai=req]').value = aiSettings.request || '';
     var aiTypeTimer = 0;
     ai.addEventListener('input', function (e) {   // typing is remembered without Save: the request box and the settings fields
@@ -2298,7 +2299,7 @@
     renderAiPromptSelect(); renderAiPrompts(); aiFillSettingsForm();
   }
   function aiApplySize() {
-    if (!ai || !aiSettings.size) return;
+    if (!ai || !aiSettings.size || ai.classList.contains('nbg-embedded')) return;   // embedded: the menu's size applies
     ai.style.width = Math.min(aiSettings.size.w, window.innerWidth - 16) + 'px'; ai.style.height = Math.min(aiSettings.size.h, window.innerHeight - 16) + 'px';
   }
   function aiSStatus(m, bad) { var el = ai.querySelector('[data-ai=sstatus]'); el.textContent = m || ''; el.classList.toggle('nbg-bad', !!bad); }
@@ -2510,34 +2511,37 @@
     if (code && !code.hidden) { var cr = code.getBoundingClientRect(); if (cr.left - ai.offsetWidth - 8 >= 8) left = cr.left - ai.offsetWidth - 8; else left = 8; }   // beside the structure panel, not under it
     ai.style.left = Math.max(8, left) + 'px'; ai.style.top = '8px';
   }
+  // the assistant is the menu's Assistant tab
   function openAi(view) {
-    if (!ai) buildAi();
-    ui.ai = 'on'; uiSave(); syncToolbars();
+    ensureMenu();
+    openMenuTab('ai');
     setAiView(view || aiSettings.view || 'ask');
     return true;
   }
-  function openAiPanel() { ai.hidden = false; placeAi(); layoutAi(); }
+  function openAiPanel() { ai.hidden = false; layoutAi(); }
   function closeAiPanel() { ai.hidden = true; }
-  function closeAi() { if (!ai || ai.hidden) return false; if (isDetached('ai')) reattachPanel('ai'); setToolbarMode('ai', 'off'); return true; }
-  function aiIsOpen() { return !!(ai && !ai.hidden); }
-  window.addEventListener('resize', function () { if (ai && !ai.hidden) placeAi(); });
+  function closeAi() { if (!aiIsOpen()) return false; closeMenu(true); return true; }
+  function aiIsOpen() { return !!(menu && !menu.hidden && menuTab === 'ai' && ai && !ai.hidden); }
 
   /* ---------- detachable panels ---------- */
-  var detached = { shape: null, code: null, ai: null };   // k -> the Window holding the panel
+  var detached = { shape: null, menu: null };   // k -> the Window holding the panel ('code' and 'ai' map to 'menu')
   function detachedPanel(panel) { return !!(panel && panel.ownerDocument !== document); }
-  function isDetached(k) { var w = detached[k]; return !!(w && !w.closed); }
+  function isDetached(k) { if (k === 'code' || k === 'ai') k = 'menu'; var w = detached[k]; return !!(w && !w.closed); }
   var DETACHED_CSS = 'html,body{margin:0;height:100%;background:#fff;overflow:hidden;font:13px ' + FONT + '}' +
     '.nbg-panel.nbg-detached{position:static!important;left:auto!important;top:auto!important;width:auto!important;max-width:none!important;height:100vh!important;min-height:0!important;min-width:0!important;box-shadow:none;border:0;border-radius:0;resize:none;box-sizing:border-box;overflow:auto}' +
     '.nbg-panel.nbg-detached .nbg-grip,.nbg-panel.nbg-detached .nbg-detach,.nbg-panel.nbg-detached .nbg-fold{display:none}' +
+    '#nbg-deck-menu.nbg-detached{position:static!important;left:auto!important;top:auto!important;width:100%!important;min-width:0!important;max-width:none!important;height:100vh!important;max-height:none!important;box-shadow:none;border:0;border-radius:0;resize:none;box-sizing:border-box;display:flex;flex-direction:column}' +
+    '#nbg-deck-menu.nbg-detached .nbg-mdetach,#nbg-deck-menu.nbg-detached .nbg-pin{display:none}#nbg-deck-menu.nbg-detached .nbg-mbody{flex:1;min-height:0;overflow-y:auto}' +
     '#nbg-shape-tools.nbg-detached{height:auto!important;align-items:flex-start}#nbg-shape-tools.nbg-detached .nbg-row{flex-wrap:wrap}' +
     '.nbg-panel.nbg-detached .nbg-dragsurface{cursor:default}';
   // move the panel into its own window: a Document Picture-in-Picture window (Chrome / Edge), else a pop-up; `target` = a window to use instead (tests)
   async function detachPanel(k, target) {
-    if (k !== 'shape' && k !== 'code' && k !== 'ai') return false;
+    if (k === 'code' || k === 'ai') k = 'menu';   // the structure panel and the assistant travel with the menu
+    if (k !== 'shape' && k !== 'menu') return false;
     if (isDetached(k)) { try { detached[k].focus(); } catch (e) { /* ignore */ } return true; }
-    if (!toolbarPanel(k)) { if (k === 'shape') buildShapeTools(); else if (k === 'code') buildCode(); else buildAi(); }
+    if (!toolbarPanel(k)) { if (k === 'shape') buildShapeTools(); else ensureMenu(); }
     var panel = toolbarPanel(k), w = target || null;
-    var size = k === 'shape' ? { width: 760, height: 160 } : { width: Math.max(360, panel.offsetWidth || 460), height: Math.max(320, panel.offsetHeight || 640) };
+    var size = k === 'shape' ? { width: 760, height: 160 } : { width: Math.max(420, panel.offsetWidth || 480), height: Math.max(520, panel.offsetHeight || 720) };
     if (!w) {
       if (window.documentPictureInPicture && window.documentPictureInPicture.requestWindow) { try { w = await window.documentPictureInPicture.requestWindow(size); } catch (e) { w = null; } }
       if (!w) { try { w = window.open('', 'nbg-deck-' + k, 'popup=yes,width=' + size.width + ',height=' + size.height); } catch (e) { w = null; } }
@@ -2552,26 +2556,28 @@
     panel.classList.add('nbg-detached');
     d.body.appendChild(panel);   // adopted into the other document; its listeners travel with it
     detached[k] = w;
-    ui[k] = 'on'; uiSave();
+    if (k === 'menu') { menu.hidden = false; renderMenu(); if (menuTab !== 'menu') showTab(menuTab); }
+    else { ui[k] = 'on'; uiSave(); }
     w.addEventListener('pagehide', function () { if (detached[k] === w) reattachPanel(k); });
-    w.addEventListener('resize', function () { if (k === 'shape') layoutShapeTools(); else if (k === 'code') applySplit(); });
+    w.addEventListener('resize', function () { if (k === 'shape') layoutShapeTools(); else if (k === 'menu') applySplit(); });
     syncToolbars();
     toast(TOOLBAR_NAMES[k] + ' detached into its own window — close that window (or ✕ / Esc in the panel) to bring it back.', 3500);
     return true;
   }
   function reattachPanel(k) {
+    if (k === 'code' || k === 'ai') k = 'menu';
     var panel = toolbarPanel(k), w = detached[k];
     detached[k] = null;
     if (!panel) return false;
     if (panel.ownerDocument !== document) document.body.appendChild(panel);
-    if (k === 'code' && aiPop && aiPop.ownerDocument !== document) { aiPop.hidden = true; aiPopEl = null; document.body.appendChild(aiPop); }   // the row popup came along
+    if (k === 'menu' && aiPop && aiPop.ownerDocument !== document) { aiPop.hidden = true; aiPopEl = null; document.body.appendChild(aiPop); }   // the row popup came along
     panel.classList.remove('nbg-detached');
     if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } }
-    if (k === 'ai') aiApplySize();
+    if (k === 'menu' && !menu.hidden) { placeMenuDocked(); refreshMenu(); if (menuTab !== 'menu') applySplit(); }
     syncToolbars();
     return true;
   }
-  window.addEventListener('pagehide', function () { ['shape', 'code', 'ai'].forEach(function (k) { var w = detached[k]; if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } } }); });
+  window.addEventListener('pagehide', function () { ['shape', 'menu'].forEach(function (k) { var w = detached[k]; if (w && !w.closed) { try { w.close(); } catch (e) { /* ignore */ } } }); });
 
   /* ---------- discard / save ---------- */
   function discardEdits() {
@@ -2707,20 +2713,31 @@
   var style = document.createElement('style');
   style.id = 'nbg-deck-menu-style';
   style.textContent =
-    '#nbg-deck-menu{position:fixed;z-index:2147483647;min-width:280px;max-width:380px;max-height:calc(100vh - 16px);overflow-y:auto;padding:6px;background:#fff;color:' + INK + ';' +
+    '#nbg-deck-menu{position:fixed;z-index:2147483647;min-width:300px;max-width:400px;max-height:calc(100vh - 16px);overflow-y:auto;padding:0;background:#fff;color:' + INK + ';' +
     'border:1px solid rgba(0,56,65,.14);border-radius:12px;box-shadow:0 12px 32px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);' +
     'font:14px/1.35 ' + FONT + ';user-select:none;-webkit-user-select:none}' +
     '#nbg-deck-menu .nbg-head{display:flex;align-items:center;gap:8px;padding:8px 10px 6px;font-size:11px;letter-spacing:.12em;' +
     'text-transform:uppercase;color:' + ACCENT + ';opacity:.85}' +
-    '#nbg-deck-menu .nbg-head i{display:inline-block;width:18px;height:3px;background:' + CYAN + ';border-radius:2px}' +
+    '#nbg-deck-menu .nbg-head i{display:inline-block;width:18px;height:3px;background:' + CYAN + ';border-radius:2px;flex:none}' +
     '#nbg-deck-menu.nbg-pinned .nbg-head{cursor:move;touch-action:none}' +
+    '#nbg-deck-menu .nbg-head{padding:8px 8px 6px 12px;flex-wrap:nowrap;border-bottom:1px solid rgba(0,56,65,.10)}#nbg-deck-menu .nbg-mtitle{white-space:nowrap}' +
+    '#nbg-deck-menu .nbg-head button{border:0;background:transparent;color:inherit;font:inherit;cursor:pointer}#nbg-deck-menu .nbg-head button:focus-visible{outline:2px solid ' + CYAN + ';outline-offset:1px}#nbg-deck-menu .nbg-mbody{padding:6px}#nbg-deck-menu .nbg-mbody[hidden]{display:none!important}' +
+    '#nbg-deck-menu .nbg-mtabs{display:inline-flex;gap:2px;margin-left:8px}#nbg-deck-menu .nbg-head button.nbg-mtab{display:inline-block;width:auto;margin:0;padding:3px 9px;font-size:12px;line-height:1.3;letter-spacing:0;text-transform:none;border-radius:6px;color:' + INK + '}' +
+    '#nbg-deck-menu .nbg-head button.nbg-mtab.nbg-on{background:' + ACCENT + ';color:#fff}#nbg-deck-menu .nbg-head button.nbg-mtab:hover{background:' + CREAM + '}#nbg-deck-menu .nbg-head button.nbg-mtab.nbg-on:hover{background:' + ACCENT + '}' +
+    '#nbg-deck-menu .nbg-mslide{margin-left:8px;font-size:11px;letter-spacing:.06em;color:' + MUTED + ';white-space:nowrap}#nbg-deck-menu .nbg-mfill{flex:1}' +
+    '#nbg-deck-menu .nbg-head button.nbg-mquiet{display:inline-block;width:auto;margin:0 0 0 2px;padding:2px 6px;font-size:13px;line-height:1.2;letter-spacing:0;text-transform:none;border-radius:6px;color:' + MUTED + '}#nbg-deck-menu .nbg-head button.nbg-mquiet:hover{color:' + ACCENT + ';background:' + CREAM + '}' +
+    '#nbg-deck-menu button.nbg-pin{margin-left:2px}' +
+    '#nbg-deck-menu.nbg-tabbed{display:flex;flex-direction:column;width:480px;max-width:none;height:min(78vh,720px);min-height:240px;resize:both;overflow:hidden}' +
+    '#nbg-deck-menu .nbg-code.nbg-embedded{position:static!important;left:auto!important;top:auto!important;width:auto!important;min-width:0!important;max-width:none!important;height:auto!important;min-height:0!important;max-height:none!important;flex:1 1 auto;margin:0;padding:0;box-shadow:none;border:0;border-radius:0;resize:none}' +
+    '#nbg-deck-menu .nbg-code.nbg-embedded:not(.nbg-ai) .nbg-ch{display:none!important}#nbg-deck-menu .nbg-code.nbg-embedded[hidden]{display:none!important}' +
+    '#nbg-deck-menu .nbg-ai.nbg-embedded .nbg-ch .nbg-ct,#nbg-deck-menu .nbg-ai.nbg-embedded .nbg-grip,#nbg-deck-menu .nbg-ai.nbg-embedded .nbg-detach,#nbg-deck-menu .nbg-ai.nbg-embedded .nbg-fold,#nbg-deck-menu .nbg-ai.nbg-embedded .nbg-ch [data-c=close]{display:none!important}' +
     '#nbg-deck-menu button.nbg-pin{display:inline-block;width:auto;margin-left:auto;padding:2px 7px;font-size:13px;line-height:1.2;opacity:.5;border-radius:6px;filter:grayscale(1)}#nbg-deck-menu button.nbg-pin:hover{opacity:.85}#nbg-deck-menu button.nbg-pin.nbg-pin-on{opacity:1;filter:none;background:rgba(0,173,191,.18)}' +
     '#nbg-deck-menu button.nbg-subbtn{padding:8px 10px 2px;border-radius:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + '}#nbg-deck-menu button.nbg-subbtn:hover{background:transparent;color:' + ACCENT + '}#nbg-deck-menu button.nbg-subbtn span{display:inline;margin:0 0 0 8px;font-size:11px;letter-spacing:0;text-transform:none;color:' + MUTED + '}' +
-    '#nbg-deck-menu button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;' +
+    '#nbg-deck-menu .nbg-mbody button{display:block;width:100%;text-align:left;border:0;background:transparent;color:inherit;' +
     'font:inherit;padding:9px 10px;border-radius:8px;cursor:pointer}' +
-    '#nbg-deck-menu button:hover,#nbg-deck-menu button:focus-visible{background:' + CREAM + ';outline:none}' +
-    '#nbg-deck-menu button b{display:block;font-weight:600;color:' + INK + '}' +
-    '#nbg-deck-menu button span{display:block;font-size:12px;color:' + MUTED + ';margin-top:2px}' +
+    '#nbg-deck-menu .nbg-mbody button:hover,#nbg-deck-menu .nbg-mbody button:focus-visible{background:' + CREAM + ';outline:none}' +
+    '#nbg-deck-menu .nbg-mbody button b{display:block;font-weight:600;color:' + INK + '}' +
+    '#nbg-deck-menu .nbg-mbody button span{display:block;font-size:12px;color:' + MUTED + ';margin-top:2px}' +
     '#nbg-deck-menu .nbg-sep{height:1px;margin:4px 8px;background:rgba(0,56,65,.10)}' +
     '#nbg-deck-menu .nbg-quiet{color:' + MUTED + '}' +
     '#nbg-deck-menu .nbg-sub{padding:8px 10px 2px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + ';border-top:1px solid rgba(0,56,65,.10);margin-top:4px}' +
@@ -2816,17 +2833,81 @@
   document.head.appendChild(style);
 
   var menu = null, menuTarget = null, menuShape = null, menuStack = [], menuSlide = null, menuPinned = false;   // pinned: stays open after a choice or a click elsewhere, movable by its header, keeps its place
-  var menuDrag = null;
+  var menuDrag = null, menuTab = 'menu', menuPos = null;   // menuTab: 'menu' (the items) | 'outline' | 'tree' (the structure panel, embedded); menuPos: where a pinned menu was dragged
+  var MENU_TABS = [['menu', 'Menu', 'The actions for what is under the pointer, the toolbars, printing and saving'], ['outline', 'Outline', 'The ' + AREA + '’s shapes — tick boxes to select several, click a name to select one'], ['tree', 'Tree', 'The ' + AREA + '’s HTML elements, with the selected element’s source editable below them'], ['ai', 'Assistant', 'Ask an AI model about the ' + AREA + ' or the selection — with a screenshot, the source and a clipboard image, each optional']];
+  function inEmbedded(t) { return !!t && ((code && code.contains(t)) || (ai && ai.contains(t))); }   // inside a panel embedded in the menu
+  function menuHeld() { return menuPinned || menuTab !== 'menu' || (menu && detachedPanel(menu)); }   // stays open: pinned, showing a structure tab, or in its own window
+  var menuSize = null;   // the size the viewer gave the tabbed menu (its corner handle), kept across tab switches
+  function ensureMenu() {   // the menu with the structure panel (Outline / Tree tabs) and the assistant (Assistant tab) embedded
+    if (!menu) buildMenu();
+    if (!code) buildCode();
+    if (code.parentNode !== menu) { code.classList.add('nbg-embedded'); menu.appendChild(code); }
+    if (!ai) buildAi();
+    if (ai.parentNode !== menu) { ai.classList.add('nbg-embedded'); ai.style.width = ''; ai.style.height = ''; menu.appendChild(ai); }
+  }
+  function showTab(tab) {   // a tabbed view: the menu takes the panel's size, the items give way to the panel
+    ensureMenu(); menuTab = tab;
+    menu.classList.add('nbg-tabbed'); menu.querySelector('.nbg-mbody').hidden = true;
+    if (menuSize && !detachedPanel(menu)) { menu.style.width = menuSize.w + 'px'; menu.style.height = menuSize.h + 'px'; }
+    if (tab === 'ai') { if (code && !code.hidden) closeCodePanel(); if (ai.hidden) openAiPanel(); else layoutAi(); }
+    else { if (ai && !ai.hidden) closeAiPanel(); setTab(tab); openCodePanel(); }
+  }
+  function hideTabbed() {
+    if (menu && menu.classList.contains('nbg-tabbed')) {
+      if (!detachedPanel(menu) && menu.offsetWidth) menuSize = { w: menu.offsetWidth, h: menu.offsetHeight };
+      menu.classList.remove('nbg-tabbed'); menu.style.width = ''; menu.style.height = '';
+      menu.querySelector('.nbg-mbody').hidden = false;
+    }
+    if (code && !code.hidden) closeCodePanel();
+    if (ai && !ai.hidden) closeAiPanel();
+  }
+  function setMenuTab(tab) {
+    if (tab === 'code') tab = 'tree';
+    if (tab !== 'menu' && tab !== 'outline' && tab !== 'tree' && tab !== 'ai') return false;
+    if (!menu || menu.hidden) { if (tab === 'menu') return false; openMenuTab(tab); return true; }
+    if (tab === 'menu') { menuTab = 'menu'; hideTabbed(); refreshMenu(); }
+    else { showTab(tab); refreshMenu(); }   // a panel tab holds the menu open: the viewer works in it
+    return true;
+  }
+  function placeMenuDocked() {   // a pinned / programmatic open: where the viewer dragged it, else docked top-right
+    if (detachedPanel(menu)) return;
+    menu.style.left = '0px'; menu.style.top = '0px';
+    var r = menu.getBoundingClientRect();
+    if (menuPos) { menu.style.left = Math.max(8, Math.min(menuPos.left, window.innerWidth - r.width - 8)) + 'px'; menu.style.top = Math.max(8, Math.min(menuPos.top, window.innerHeight - r.height - 8)) + 'px'; }
+    else { menu.style.left = Math.max(8, window.innerWidth - r.width - 8) + 'px'; menu.style.top = '8px'; }
+  }
+  function openMenuTab(tab) {   // open (or keep) the menu on a panel tab (held open by the tab)
+    ensureMenu();
+    var wasOpen = !menu.hidden;
+    menu.hidden = false;
+    if (!wasOpen) { menuTarget = null; menuShape = null; menuStack = []; menuSlide = slideAtPoint(window.innerWidth / 2, window.innerHeight / 2); }
+    showTab(tab);
+    renderMenu();
+    if (!wasOpen) placeMenuDocked(); else if (!detachedPanel(menu)) clampMenu();
+    if (tab !== 'ai') applySplit();
+  }
   function item(action, label, hint, cls) {
     return '<button type="button" role="menuitem" data-action="' + action + '"' + (cls ? ' class="' + cls + '"' : '') + '><b>' + label + '</b>' + (hint ? '<span>' + hint + '</span>' : '') + '</button>';
   }
   function renderMenu() {
-    var h = '<div class="nbg-head"><i></i>' + esc(TITLE) + '<button type="button" data-action="pin" class="nbg-pin' + (menuPinned ? ' nbg-pin-on' : '') + '" title="' + (menuPinned ? 'Pinned — the menu stays open after a choice or a click elsewhere and keeps its place; drag this header to move it. Click to unpin; Esc or Cancel closes it.' : 'Pin the menu: keep it open after a choice or a click elsewhere, and drag it by its header (Esc or Cancel still closes it).') + '">📌</button></div>';
-    menu.classList.toggle('nbg-pinned', menuPinned);
+    var head = menu.querySelector('.nbg-head'), body = menu.querySelector('.nbg-mbody');
+    var hh = '<i></i><span class="nbg-mtitle">' + esc(TITLE) + '</span><span class="nbg-mtabs">';
+    MENU_TABS.forEach(function (t) { hh += '<button type="button" data-action="mtab" data-mtab="' + t[0] + '" class="nbg-mtab' + (menuTab === t[0] ? ' nbg-on' : '') + '" title="' + t[2] + '">' + t[1] + '</button>'; });
+    hh += '</span><span class="nbg-mslide">' + (menuTab !== 'menu' && codeSlideEl ? esc(unitLabel(codeSlideEl)) : '') + '</span><span class="nbg-mfill"></span>';
+    if (menuTab === 'outline' || menuTab === 'tree') hh += '<button type="button" data-action="mrefresh" class="nbg-mquiet" title="Re-read the ' + AREA + '">↻</button>';
+    hh += '<button type="button" data-action="mdetach" class="nbg-mquiet nbg-mdetach" title="Detach the menu into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it (or ✕ here) to bring it back">⧉</button>';
+    if (menuTab === 'menu') hh += '<button type="button" data-action="pin" class="nbg-pin' + (menuPinned ? ' nbg-pin-on' : '') + '" title="' + (menuPinned ? 'Pinned — the menu stays open after a choice or a click elsewhere and keeps its place; drag this header to move it. Click to unpin; Esc or Cancel closes it.' : 'Pin the menu: keep it open after a choice or a click elsewhere, and drag it by its header (Esc or Cancel still closes it).') + '">📌</button>';
+    hh += '<button type="button" data-action="close" class="nbg-mquiet" title="Close (Esc)">✕</button>';
+    head.innerHTML = hh;
+    menu.classList.toggle('nbg-pinned', menuHeld());
+    menu.classList.toggle('nbg-tabbed', menuTab !== 'menu');
+    body.hidden = menuTab !== 'menu';
+    if (menuTab !== 'menu') { body.innerHTML = ''; return; }
+    var h = '';
     if (menuTarget) h += item('edit', 'Edit text', 'Edit this text in place — Enter applies, Esc cancels. Or double-click any text.');
     if (menuShape) {
       var inSel = sel.indexOf(menuShape) >= 0;
-      h += item('shape', 'Resize / move shape', describe(menuShape) + ' — handles resize (Shift keeps proportions), drag moves, arrows nudge, Esc finishes.' + (shape ? '' : ' Shift+click adds more shapes.'));
+      h += item('shape', 'Resize / move shape', describe(menuShape) + ' — handles resize (Shift keeps proportions), drag moves, arrows nudge, Esc finishes. Or double-click a shape or image.' + (shape ? '' : ' Shift+click adds more shapes.'));
       if (shape && !inSel) h += item('addsel', 'Add to selection', 'Select this shape together with the ' + sel.length + ' already selected (Shift+click does the same).');
       else if (shape && inSel && sel.length > 1) h += item('rmsel', 'Remove from selection', 'Keep the other ' + (sel.length - 1) + ' selected (Shift+click does the same).', 'nbg-quiet');
       if (shape) h += item('selall', 'Select all shapes on this ' + AREA + '', 'Ctrl/Cmd+A while a shape is selected; Shift+drag draws a selection box.', 'nbg-quiet');
@@ -2842,15 +2923,14 @@
         h += item('pick', (el === menuShape ? '● ' : '○ ') + describe(el), rel + (i === menuStack.length - 1 ? ' · outermost' : '') + ' — click selects it alone, Shift+click adds it', 'nbg-pick' + (el === menuShape ? ' nbg-pick-on' : ''));
       });
     }
-    var shown = ['text', 'shape', 'code', 'ai'].filter(toolbarVisible).map(function (k) { return TOOLBAR_NAMES[k]; });
+    var shown = ['text', 'shape'].filter(toolbarVisible).map(function (k) { return TOOLBAR_NAMES[k]; });
     h += '<button type="button" data-action="tbfold" class="nbg-sub nbg-subbtn" title="' + (ui.menuFold ? 'Expand the Toolbars section' : 'Collapse the Toolbars section') + '">' + (ui.menuFold ? '▸' : '▾') + ' Toolbars' + (ui.menuFold ? '<span>' + (shown.length ? shown.join(', ') + ' shown' : 'none shown') + '</span>' : '') + '</button>';
-    if (!ui.menuFold) ['text', 'shape', 'code', 'ai'].forEach(function (k) {
+    if (!ui.menuFold) ['text', 'shape'].forEach(function (k) {
       var on = toolbarVisible(k), mode = ui[k];
       h += item('tb-' + k, (on ? '☑ ' : '☐ ') + TOOLBAR_NAMES[k], on ? (mode === 'on' ? 'Shown and pinned — follows the selection. Click to hide it.' : 'Shown with the current selection. Click to hide it (it stays hidden until you show it again).') : (mode === 'off' ? 'Hidden by you. Click to show it and keep it visible.' : k === 'code' ? 'Opens on request (Show structure / Show HTML). Click to show it and keep it visible.' : k === 'ai' ? 'Opens on request (Ask the assistant). Click to show it and keep it visible.' : 'Appears with the selection. Click to show it now and keep it visible.'), 'nbg-pick' + (on ? ' nbg-pick-on' : ''));
     });
     if (!ui.menuFold && (ui.text !== 'auto' || ui.shape !== 'auto')) h += item('tb-auto', 'Automatic toolbars', 'Show the text and shape toolbars with the selection again (the default).', 'nbg-quiet');
-    h += item('structure', 'Show structure & HTML', 'One panel, two tabs: the ' + AREA + '’s shapes as an outline (tick boxes to select several), and the HTML tree with, below it, the editable source of ' + (menuShape || menuTarget ? describe(menuShape || menuTarget) : 'the selected element') + '. Right-click a row there to ask the assistant about it.', 'nbg-quiet');
-    h += item('ai', 'Ask the assistant', 'Send a request to an AI model with a screenshot of the ' + AREA + ', its source, ' + (menuShape || menuTarget ? 'the source of ' + describe(menuShape || menuTarget) : 'the selected element’s source') + ' and a clipboard image — each optional. The reply is shown, or replaces the selected element (Ctrl/Cmd+Shift+L).', 'nbg-quiet');
+    h += item('ai', 'Ask the assistant', 'The Assistant tab: send a request to an AI model with a screenshot of the ' + AREA + ', its source, ' + (menuShape || menuTarget ? 'the source of ' + describe(menuShape || menuTarget) : 'the selected element’s source') + ' and a clipboard image — each optional. The reply is shown, or replaces the selected element (Ctrl/Cmd+Shift+L).', 'nbg-quiet');
     if (PAGE_MODE) h += item('pdf', 'Print / Save as PDF', 'Opens the print dialog — choose “Save as PDF”. The browser paginates the page; backgrounds are kept and the editor’s panels are hidden.');
     else h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
     if (edits.length) {
@@ -2861,17 +2941,22 @@
       h += item('discard', 'Discard edits', 'Restore every original text, size, position, order and group on ' + (allRoots().length > 1 ? 'every ' + UNIT.toLowerCase() : 'the ' + AREA) + '.', 'nbg-quiet');
     }
     h += '<div class="nbg-sep"></div>' + item('close', 'Cancel', '', 'nbg-quiet');
-    menu.innerHTML = h;
+    body.innerHTML = h;
   }
   function buildMenu() {
     menu = document.createElement('div');
     menu.id = 'nbg-deck-menu';
-    menu.setAttribute('role', 'menu');
+    menu.setAttribute('role', 'dialog'); menu.setAttribute('aria-label', TITLE);
     menu.hidden = true;
+    menu.innerHTML = '<div class="nbg-head"></div><div class="nbg-mbody" role="menu"></div>';
     menu.addEventListener('click', function (e) {
+      if (inEmbedded(e.target)) return;   // the embedded panels handle their own clicks
       var b = e.target.closest('button'); if (!b) return;
       e.preventDefault(); e.stopPropagation();
       var action = b.getAttribute('data-action'), t = menuTarget, s = menuShape;
+      if (action === 'mtab') { setMenuTab(b.getAttribute('data-mtab')); return; }
+      if (action === 'mrefresh') { codeRefresh(); return; }
+      if (action === 'mdetach') { detachPanel('menu'); return; }
       if (action === 'pin') { menuPinned = !menuPinned; refreshMenu('pin'); toast(menuPinned ? 'Menu pinned — it stays open after a choice or a click elsewhere and keeps its place; drag its header to move it. Esc or Cancel closes it.' : 'Menu unpinned — it follows the pointer again.', 3000); return; }
       if (action === 'tbfold') { ui.menuFold = !ui.menuFold; uiSave(); refreshMenu('tbfold'); return; }
       if (action === 'close') { closeMenu(true); return; }
@@ -2891,22 +2976,22 @@
       else if (action === 'save') { closeMenu(); saveEditedCopy(); }
       else if (action === 'discard') { closeMenu(); discardEdits(); }
       else if (action === 'discardslide') { var sl = menuSlide; closeMenu(); discardSlideEdits(sl); }
-      else if (action === 'structure') { var ce = s || t || menuSlide; closeMenu(); openCode(ce); }
-      else if (action === 'ai') { var ae = s || t; closeMenu(); if (ae && !shape && !editing && ae.isConnected) selectSolo(ae, true); openAi(); }
-      else if (/^tb-(text|shape|code|ai)$/.test(action)) {
-        var k = action.slice(3), tbEl = s || t || menuSlide; closeMenu();
+      else if (action === 'ai') { var ae = s || t; if (ae && !shape && !editing && ae.isConnected) selectSolo(ae, true); openAi(); }
+      else if (/^tb-(text|shape)$/.test(action)) {
+        var k = action.slice(3); closeMenu();
         if (toolbarVisible(k)) setToolbarMode(k, 'off');
-        else if (k === 'code') openCode(tbEl);
-        else if (k === 'ai') openAi();
         else setToolbarMode(k, 'on');
       }
       else if (action === 'tb-auto') { closeMenu(); ui.text = 'auto'; ui.shape = 'auto'; uiSave(); syncToolbars(); toast('Toolbars appear with the selection again.', 2000); }
       else closeMenu();
     });
-    menu.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-    // pinned: the header drags the menu (the pin button excluded); the header is re-rendered, so delegate from the menu
+    menu.addEventListener('contextmenu', function (e) { if (!inEmbedded(e.target)) e.preventDefault(); });
+    menu.addEventListener('keydown', function (e) {   // a detached menu has no deck-level key handling: Esc closes (and reattaches) it
+      if (e.key === 'Escape' && detachedPanel(menu) && !inEmbedded(e.target)) { e.preventDefault(); e.stopPropagation(); closeMenu(true); }
+    });
+    // pinned: the header drags the menu (its buttons excluded); the header is re-rendered, so delegate from the menu
     menu.addEventListener('pointerdown', function (e) {
-      if (!menuPinned || e.button !== 0 || !e.target.closest('.nbg-head') || e.target.closest('button')) return;
+      if (!menuHeld() || detachedPanel(menu) || e.button !== 0 || !e.target.closest('.nbg-head') || e.target.closest('button')) return;
       e.preventDefault(); e.stopPropagation();
       var r = menu.getBoundingClientRect();
       menuDrag = { id: e.pointerId, dx: e.clientX - r.left, dy: e.clientY - r.top };
@@ -2917,6 +3002,7 @@
       var r = menu.getBoundingClientRect();
       menu.style.left = Math.max(8, Math.min(e.clientX - menuDrag.dx, window.innerWidth - r.width - 8)) + 'px';   // the same 8 px margin as clampMenu
       menu.style.top = Math.max(8, Math.min(e.clientY - menuDrag.dy, window.innerHeight - r.height - 8)) + 'px';
+      menuPos = { left: parseFloat(menu.style.left), top: parseFloat(menu.style.top) };
     });
     ['pointerup', 'pointercancel'].forEach(function (t) { menu.addEventListener(t, function (e) { if (menuDrag && e.pointerId === menuDrag.id) menuDrag = null; }); });
     // hovering (or focusing) an item outlines the element it is about: the stacked shapes, the shape items, the text item
@@ -2927,22 +3013,24 @@
       if (a === 'edit') return menuTarget;
       return null;
     }
-    menu.addEventListener('pointerover', function (e) { hoverEl(menuItemEl(e.target.closest('button'))); });
-    menu.addEventListener('focusin', function (e) { hoverEl(menuItemEl(e.target.closest('button'))); });
+    // the embedded structure panel outlines its own rows; only the menu's items are handled here
+    menu.addEventListener('pointerover', function (e) { if (inEmbedded(e.target)) return; hoverEl(menuItemEl(e.target.closest('button'))); });
+    menu.addEventListener('focusin', function (e) { if (inEmbedded(e.target)) return; hoverEl(menuItemEl(e.target.closest('button'))); });
     menu.addEventListener('pointerleave', function () { hoverEl(null); });
     document.body.appendChild(menu);
   }
   function openMenu(x, y, target, shapeTarget) {
-    if (!menu) buildMenu();
+    ensureMenu();
     menuTarget = target || null; menuShape = shapeTarget || null;
     lastPoint = { x: x, y: y };
     menuSlide = slideAtPoint(x, y);
     menuStack = shapeStack(x, y);
     if (menuShape && menuStack.indexOf(menuShape) < 0) menuStack.unshift(menuShape);
-    var keep = menuPinned && !menu.hidden;   // a pinned menu stays where the viewer put it; its items follow the new target
+    var keep = menuHeld() && !menu.hidden;   // a held menu (pinned, on a structure tab, detached) stays where it is, on its tab; its items follow the new target
+    if (!keep) { menuTab = 'menu'; hideTabbed(); }
     renderMenu();
     menu.hidden = false;
-    if (keep) clampMenu();
+    if (keep) { if (!detachedPanel(menu)) clampMenu(); }
     else {
       menu.style.left = '0px'; menu.style.top = '0px';
       var r = menu.getBoundingClientRect();
@@ -2952,21 +3040,24 @@
     var first = menu.querySelector('button[data-action]:not([data-action=pin])'); if (first) first.focus({ preventScroll: true });
   }
   function clampMenu() {
+    if (detachedPanel(menu)) return;
     var r = menu.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - r.width - 8)) + 'px';
     menu.style.top = Math.max(8, Math.min(r.top, window.innerHeight - r.height - 8)) + 'px';
   }
   function refreshMenu(focusAction) {   // re-render in place (ticks, hints, the pin) and keep the keyboard focus where it was
     if (!menu || menu.hidden) return;
-    var act = focusAction || (menu.contains(document.activeElement) && document.activeElement.getAttribute('data-action')) || null;
+    var ae = menu.ownerDocument.activeElement, act = focusAction || (menu.contains(ae) && !inEmbedded(ae) && ae.getAttribute('data-action')) || null;
     renderMenu(); clampMenu();
     if (act) { var f = menu.querySelector('[data-action="' + act + '"]'); if (f) f.focus({ preventScroll: true }); }
   }
   // force: an explicit close (Cancel, Esc) — otherwise a pinned menu refreshes instead of closing
   function closeMenu(force) {
     if (!menu || menu.hidden) return;
-    if (menuPinned && !force) { refreshMenu(); return; }
+    if (menuHeld() && !force) { refreshMenu(); return; }
     hoverEl(null);
+    hideTabbed(); menuTab = 'menu';
+    if (detachedPanel(menu)) reattachPanel('menu');
     menu.hidden = true; menuTarget = null; menuShape = null; menuStack = []; menuSlide = null;
   }
 
@@ -2994,13 +3085,19 @@
     if (editing && editing.el.contains(e.target)) return;
     if (e.target && e.target.closest && e.target.closest('#nbg-shape-box')) return;
     var el = resolveTextTarget(e.target);
-    if (!el) return;
+    if (!el) {   // not text: a shape or an image under the pointer is selected for resize / move
+      var sh = resolveShapeTarget(e.target);
+      if (!sh) return;
+      e.preventDefault();
+      if (!(shape && sel.length === 1 && shape.el === sh)) selectShape(sh);
+      return;
+    }
     e.preventDefault();
     startEdit(el, true);
   });
   function inTools(t) { return !!(tools && t && tools.contains(t)); }
   document.addEventListener('pointerdown', function (e) {
-    if (menu && !menu.hidden && !menu.contains(e.target) && !menuPinned) closeMenu();
+    if (menu && !menu.hidden && !menu.contains(e.target) && !menuHeld()) closeMenu();
     if (editing && !editing.el.contains(e.target) && !inTools(e.target) && !(menu && menu.contains(e.target))) commitEdit();
     // Shift+click / Shift+drag (and Ctrl/Cmd+click with a selection) select shapes instead of deselecting
     lastPoint = { x: e.clientX, y: e.clientY };
@@ -3076,20 +3173,20 @@
         else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(0, step, e.altKey); }
         return;
       }
-      if (!menu || menu.hidden || !menu.contains(document.activeElement)) return;
+      if (!menu || menu.hidden || !menu.contains(document.activeElement) || inEmbedded(document.activeElement)) return;
       e.stopPropagation();
       if (type !== 'keydown') return;
       if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); }
       else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        var items = Array.prototype.slice.call(menu.querySelectorAll('button'));
+        var items = Array.prototype.slice.call(menu.querySelectorAll('.nbg-head button, .nbg-mbody button'));
         var i = items.indexOf(document.activeElement);
         items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus({ preventScroll: true });
       }
     }, true);
   });
-  window.addEventListener('resize', function () { if (menuPinned) { if (menu && !menu.hidden) clampMenu(); } else closeMenu(); });
-  window.addEventListener('scroll', function () { if (!menuPinned) closeMenu(); }, true);
+  window.addEventListener('resize', function () { if (menuHeld()) { if (menu && !menu.hidden) { clampMenu(); if (menuTab !== 'menu') applySplit(); } } else closeMenu(); });
+  window.addEventListener('scroll', function () { if (!menuHeld()) closeMenu(); }, true);
   window.addEventListener('beforeunload', function () { if (editing) commitEdit(); });
 
   loadStored();
@@ -3111,7 +3208,8 @@
       align: alignSelection, distribute: distributeSelection, order: reorder, group: groupSelection, ungroup: ungroupSelection,
       groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes,
     },
-    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { return isDetached(k) ? detached[k] : null; } },
+    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { if (k === 'code' || k === 'ai') k = 'menu'; return isDetached(k) ? detached[k] : null; } },
+    menu: { open: function (x, y) { openMenu(x === undefined ? window.innerWidth / 2 : x, y === undefined ? window.innerHeight / 2 : y, null, null); return true; }, close: function () { closeMenu(true); return true; }, isOpen: function () { return !!(menu && !menu.hidden); }, tab: function (t) { if (t !== undefined) setMenuTab(t); return menuTab; }, pinned: function (on) { if (on !== undefined && menu) { menuPinned = !!on; if (!menu.hidden) refreshMenu(); } return menuPinned; }, held: menuHeld, detach: function (w) { return detachPanel('menu', w); }, reattach: function () { return reattachPanel('menu'); } },
     ai: {
       open: openAi, close: closeAi, isOpen: aiIsOpen, view: function (v) { if (!ai) buildAi(); if (v) setAiView(v); return aiView; },
       send: aiSend, test: aiTest, settings: aiConfigure,

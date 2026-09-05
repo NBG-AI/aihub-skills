@@ -166,7 +166,21 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   browser's native menu. 📌 pins it: it then stays open after a choice or a click elsewhere,
   keeps its place (a right-click elsewhere re-renders it for the new target where it is) and is
   draggable by its header (`menuDrag`, 8 px margin like `clampMenu`); unpinned, it follows the
-  pointer again.
+  pointer again. **Tabs (v1.15.0):** the menu header carries *Menu / Outline / Tree* tabs
+  (`menuTab`, `setMenuTab`, `MENU_TABS`): the structure panel (`#nbg-code`) is embedded in the menu
+  (`ensureMenu()` appends it, `.nbg-embedded` hides its own header) and shown on the Outline / Tree
+  tabs (`showStructure` / `hideStructure`, `.nbg-tabbed` gives the menu the panel's size and
+  `resize: both`); a structure tab holds the menu open (`menuHeld()` = pinned, structure tab, or
+  detached) and hides the pin. `openCode(el, tab)` → `openMenuTab(tab)` (docked top-right, or where
+  the viewer dragged it — `menuPos`); `closeCode()` closes the menu; `codeIsOpen()` = menu open on a
+  structure tab. The Toolbars section lists text / shape / assistant only. ⧉ (`data-action=mdetach`)
+  detaches the menu itself — `detachPanel('menu')`, `'code'` and `'ai'` map to it — into a PiP / pop-up
+  window, structure and assistant included; ✕ / Esc there reattach and close it. **Assistant tab:**
+  the assistant panel (`#nbg-ai`) is embedded the same way (`.nbg-embedded` keeps its own view tabs
+  but hides its title, grip, ⧉ ▾ ✕); `openAi(view)` → `openMenuTab('ai')`; `closeAi()` closes the
+  menu; `aiIsOpen()` = menu open on the Assistant tab; the Toolbars section lists text / shape only;
+  `aiSettings.pos` / `size` are no longer applied (the menu's size is remembered across tab switches
+  in `menuSize`); nothing re-opens on load — the menu and its tabs open on request.
 - **Edit text** / **double-click**: the whole text block (accent spans inside a title stay
   intact) becomes `contenteditable` with a teal outline; Enter or a click outside applies, Esc
   cancels, Shift+Enter inserts a line break, Ctrl/Cmd+Z undoes. Paste/drop insert plain text
