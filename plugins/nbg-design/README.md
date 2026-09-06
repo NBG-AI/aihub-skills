@@ -70,8 +70,12 @@ are picked per slide.
 
 ## Installation
 
+The plugin is distributed through the public marketplace
+[BikS2013-coding-agents/nbg-design](https://github.com/BikS2013-coding-agents/nbg-design):
+
 ```bash
-/plugin install nbg-design
+/plugin marketplace add BikS2013-coding-agents/nbg-design
+/plugin install nbg-design@nbg-design
 ```
 
 ## Usage
