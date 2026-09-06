@@ -20,20 +20,27 @@ Every delivered HTML deck also carries a right-click menu (`scripts/add-deck-men
   with handles appears; drag to resize (Shift keeps proportions) or move, arrows nudge, Esc finishes.
   A movable shape toolbar sets X/Y/W/H, fill, border, corner radius, opacity and shadow.
   *Reset shape* restores one element.
-- **Several shapes at once** — Shift+click adds shapes, Shift+drag draws a selection box, Ctrl/Cmd+A
+- **Several shapes at once** — Shift+click adds the smallest shape under the pointer, Shift+drag draws a selection box, Ctrl/Cmd+A
   selects the whole slide; move, scale and style them together, and use the toolbar's arrange row to
   bring to front / send to back, align (left, centre, right, top, middle, bottom), distribute with
   equal gaps, and group / ungroup. Nested or overlapping shapes: the menu's *Select at this point*
-  list, the toolbar's Stack list, Ctrl/Cmd+click cycling and Tab / Shift+Tab reach every level.
+  list, the toolbar's Stack list and Tab / Shift+Tab reach every level; Ctrl/Cmd+click a card to select
+  everything inside it.
+- **Edit SVG** — right-click a drawn icon, diagram or chart (an inline SVG): its parts — paths, shapes,
+  text, groups — become selectable (Shift+click picks several, Ctrl/Cmd+click inside a selected group picks its members, Ctrl/Cmd+A all); drag to move, handles
+  resize, arrows nudge — the whole selection together; the toolbar's SVG row sets
+  fill, stroke, stroke width, opacity and the text of a label, orders, duplicates and deletes parts, and
+  *Reset SVG* restores the drawing. Path data is never rewritten.
 - **Show structure / Show HTML** — a panel with an outline of the slide's shapes (checkboxes to
   select several, All / None, filter), the element tree synced both ways with the selection, and
   the selected element's editable source; Apply records the change like every other edit
   (scripts are stripped).
-- **Toolbars** — a menu section ticks the visible toolbars: tick to show and pin one (it follows the
-  selection, idle when nothing applies), untick or its ✕ to hide it, *Automatic* for the default.
-  Every toolbar adapts to the selection and the slide; the text toolbar also formats selected text
+- **One toolbar, three tabs** — Text, Shape and SVG share one floating panel; the tab of the editor in
+  use comes to the front by itself, the others stay a click away. The menu's Toolbars section ticks the
+  tabs: click one to bring it to the front and pin it, click the one in front (or its ✕) to hide it,
+  *Automatic* for the default. Every tab adapts to the selection; the Text tab also formats selected text
   blocks without entering edit mode.
-- **Ask the assistant** — a panel that sends a request to an AI model together with, each optional,
+- **The Assistant tab** — a panel that sends a request to an AI model together with, each optional,
   a screenshot of the slide, the slide's source, the selected element's source and an image from
   the clipboard; prompts come from a drop-down (built-in ones plus your own, editable); the reply is
   shown, or replaces the selected element (recorded like every other edit, with Undo). Providers:

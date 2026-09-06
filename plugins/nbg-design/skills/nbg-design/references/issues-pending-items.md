@@ -14,6 +14,12 @@
 - Current handling: No script was created because executable automation and target OS support remain unconfirmed.
 - Resolution condition: User approves or declines adding a validation script and confirms target OS expectations.
 
+### Low — SVG editing: rotated ancestors, percentage units and multi-run text are limited by design
+- Detected: 2026-09-05
+- Context: The SVG editor (block v12) maps a part's screen box into its parent's user space with `getScreenCTM().inverse()` and treats it as an axis-aligned box. A part inside a rotated `<g>` is moved in that group's own space (correct) but its frame is the axis-aligned screen box; parts sized in percentages or carrying a CSS `transform` property take the matrix path; a `<text>` with several runs (tspans) is edited in the Tree tab's source, not in the toolbar field.
+- Current handling: Documented in `SKILL.md` ("Edit SVG") and `scripts/README.md` §5; covered by `test_scripts/svg-editor-roundtrip.mjs` in the development workspace (a rotated group is exercised).
+- Resolution condition: A real deck whose SVGs need rotation handles or path-point editing — then decide whether to extend the editor or to keep regenerating such decks.
+
 ### Low — No-browser exit path of the browser-backed scripts is verified by review only
 - Detected: 2026-09-03
 - Context: `scripts/export-pdf.mjs` and `scripts/screenshot-deck.mjs` exit with code 3 when `scripts/lib/find-browser.mjs` finds no Chrome/Chromium/Edge. The development host always has Chrome at its standard macOS path, so the branch could only be reviewed, not executed; the explicit `--browser <bad path>` error branch and the pipe/verification paths were executed.

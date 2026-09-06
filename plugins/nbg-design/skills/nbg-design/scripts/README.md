@@ -246,13 +246,16 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   geometry. Keys typed in its inputs are not treated as deck shortcuts. With several shapes
   selected, X / Y / W / H show the selection box (moving it shifts all, W / H scale all from the
   top-left corner) and the style controls apply to every selected shape.
-- **Several shapes at once** (text blocks, cards, panels, images): Shift+click adds a shape to the
-  selection or removes it; Shift+drag on the slide draws a rubber band (`#nbg-marquee`) and adds
+- **Several shapes at once** (text blocks, cards, panels, images): Shift+click adds the smallest shape
+  under the pointer (`shiftPick`: the front of `shapeStack`, backdrops excluded — as in the SVG editor)
+  or, inside a selected shape, removes that shape (`shiftToggle`); Shift+drag on the slide draws a rubber band (`#nbg-marquee`) and adds
   every top-level shape fully inside it; Ctrl/Cmd+A selects every top-level shape of the slide;
-  Ctrl/Cmd+click picks the precise element under the pointer alone (a group member included);
+  Ctrl/Cmd+click selects everything inside the precise shape under the pointer (`selectInside`:
+  its `childShapes`, whole groups; a shape with nothing inside is picked alone, a group member included);
   the menu offers *Add to selection* / *Remove from selection* / *Select all shapes on this
   slide*. "Top-level shape" = an element that `resolveShapeTarget` maps to itself with no such
-  ancestor inside the slide, excluding layers that fill ≥ 98 % of the slide (backdrops). The
+  ancestor inside the slide, excluding layers that fill ≥ 98 % of the slide (backdrops) — what the
+  selection box and Select all work with. The
   frame (`#nbg-shape-box`) spans the union of the members, each member gets a dashed mark
   (`#nbg-sel-marks`, the primary one solid), the chip and the toolbar report the count. Dragging
   inside moves every member (`shift()`: absolute geometry for positioned elements, relative
@@ -267,9 +270,9 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   first. The menu renders them as *Select at this point* items (click = select alone,
   Shift+click = add); the toolbar's `[data-a=stack]` select lists `ancestorShapes(el)`, the
   selected element and `childShapes(el)` (first shape level inside it), hidden for a single
-  shape with nothing around or inside it; Ctrl/Cmd+click goes through `pickAtPoint()` — the
-  front-most shape at the point, or the next one out when the current selection is already in
-  that stack; Tab selects `parentShape`, Shift+Tab the child shape under the last pointer
+  shape with nothing around or inside it; Ctrl/Cmd+click on a shape with nothing inside goes through
+  `pickAtPoint()` — the front-most shape at the point, or the next one out when the current selection
+  is already in that stack; Tab selects `parentShape`, Shift+Tab the child shape under the last pointer
   position (`lastPoint`) or the first child. API: `shape.stackAt(x, y)`, `enclosing(el)`,
   `inside(el)`.
 - **Arrange row** (second row of the shape toolbar, `data-a` buttons):
@@ -293,8 +296,15 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
     `data-nbg-group="<id>"`, recorded as a `group` edit (`{ path, kind: 'group', original,
     value }`, so it persists, lands in the saved copy and is removed by Discard); selecting any
     member selects the whole group (`expandGroups`), grouping a selection that contains groups
-    merges them; Ctrl/Cmd+click or `solo()` picks one member.
-- **Toolbar modes**: `ui = { text, shape, code, ai }`, each `'auto'` (appears with the selection),
+    merges them; the menu's Select at this point, the Stack list or `solo()` picks one member.
+- **Tabs (block v12)**: `#nbg-tools` holds a side strip (grip, ⚓, ⧉), a tab strip (`.nbg-tbtabs`: Text /
+  Shape / SVG) and the rows; `tbTab` is the tab in front, `tbAutoKind()` the editor in use (editing → text; a
+  selection of text blocks only → text, any other selection → shape; an SVG session → svg) and it takes the
+  front whenever it changes (`tbAuto`); `setTbTab(k)` / `toolbars.tab(k)` bring a tab to the front (a hidden
+  tab is pinned first), `setToolbarMode(k, 'on')` too; `toolbarVisible(k)` for the three means "the tab is on the
+  toolbar" (mode not `'off'`); a tab whose editor has nothing applying (`tbApplies`) is dimmed (`.nbg-tbidle`)
+  but opens its idle row; the panel shows when any tab is wanted.
+- **Toolbar modes**: `ui = { text, shape, svg, code, ai }`, each `'auto'` (appears with the selection),
   `'on'` (pinned) or `'off'` (closed), persisted in `localStorage` under `nbg-deck-ui:<pathname>`.
   `syncToolbars()` is the single place that shows or hides the three panels (`toolbarWanted`:
   text = editing or a selected text block, shape = a selection, code = on request) and is called
@@ -318,7 +328,7 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   popstate, resize and transitionend schedule the same check for decks that navigate without an
   attribute change. `codeSlide()` lets the slide on screen win over a followed element whose
   slide left the screen, so the Outline / Tree always show the current slide.
-- **AI assistant panel** (`#nbg-ai`, menu *Ask the assistant*, Ctrl/Cmd+Shift+L, or the *AI assistant*
+- **AI assistant panel** (`#nbg-ai`, the menu's *Assistant* tab — no separate menu item since block v12 —, Ctrl/Cmd+Shift+L, or the *AI assistant*
   entry of the Toolbars section; `ui.ai` is `'auto'` = opens on request, like the structure panel;
   `placeAi()` docks it right, or beside the structure panel when that is open). Three views (`setAiView`):
   *Ask* — prompt drop-down (`AI_BUILTIN` + the viewer's `aiPrompts`, stored under
@@ -452,13 +462,52 @@ node "<skill-root>/scripts/add-deck-menu.mjs" my-deck.html [-o <out.html>] [--re
   `window.print()`, and restores the interactive deck — classes, inline styles, attributes and
   the viewport-fit scaling — when the dialog closes. Ctrl/Cmd+P and the browser's Print command
   use the same `beforeprint`/`afterprint` hooks, so any print of the deck is faithful.
+- **Edit SVG (block v12)**: right-click an inline `<svg>` → *Edit SVG* (or double-click the selected SVG,
+  or click one of its parts in the Tree tab). The SVG gets a dashed outline; its parts — `path`, `rect`,
+  `circle`, `ellipse`, `line`, `polyline`, `polygon`, `text`, `image`, `use`, `g`, nothing inside `defs` /
+  `clipPath` / `mask` / `symbol` / `pattern` / `marker` / gradients / `filter` — are picked by a click
+  (innermost, `svgLeafAt`; a click without a drag on the selected part's frame picks the part underneath —
+  a member of a selected group, or an overlapping part — while a drag moves the selected part; hovering
+  outlines parts through the frame), Shift+click (adds / removes a part — through the frame too; a plain
+  click on a member of several picks it alone), Ctrl/Cmd+click (`svgSelectInside`: what is inside the smallest part under the pointer — a leaf alone; the
+  members of a selected group when the click lands inside its frame), Ctrl/Cmd+A or the All button (every top-level part; a
+  group and a member never travel together, the group stays), Tab (enclosing `g`), Shift+Tab (first
+  child), or the toolbar's Parts list. Several parts: `svgEd.parts` in document order with a primary
+  (`svgEd.part`, the last picked), one frame spanning the union with a dashed mark per part
+  (`#nbg-svg-marks`); a drag moves or scales all of them proportionally (`svgPlaceMembers`: each member
+  keeps its place within the box, restored from its own snapshot before every recompute); X / Y / W / H show
+  the union in the primary's parent units; fill / stroke / width / opacity, order (members keep their own
+  order), Duplicate and Delete apply to every member; the text field needs one `<text>` alone.
+  The part's frame (`#nbg-svg-box`, eight handles) moves / resizes it; arrows nudge by one SVG unit
+  (Shift 10, Alt resizes). Geometry (`svgPlace`) is written in the parent's user space — the screen box
+  is mapped through `parent.getScreenCTM().inverse()` — as plain `x` / `y` / `width` / `height` on a
+  rect or image without a transform, `x` / `y`, `cx` / `cy`, `x1…y2` for a pure move of text / use /
+  circle / ellipse / line, else a `matrix()` = M × (the part's consolidated transform) prepended, so
+  path data is untouched. The SVG toolbar row (`#nbg-svg-tools`, the third row of `#nbg-tools`): Parts,
+  X / Y / W / H, fill and stroke (NBG palette, `none`, default), stroke width, opacity — presentation
+  attributes, or the inline style property when the part already sets it (`svgPaint`) — the text of a
+  `<text>` with one run, Order (DOM order inside the parent), Duplicate (clone without ids, after the
+  original), Delete, Reset SVG, Done. **One record**: every operation records the `<svg>`'s innerHTML
+  as its single `html` edit (`svgOp` / `track`), so it persists, is in the saved copy, is discarded per
+  slide and prints; Reset SVG drops it. Sessions are exclusive: starting text editing, selecting a
+  shape, applying source, discarding or preparing a print ends the SVG session (`svgEnd`), and the
+  `nbg-svg-editing` class never enters a record (`cleanClass`). SVG `<text>` is never contenteditable
+  (`resolveTextTarget` returns null inside an SVG); a part passed to `shape.solo` / `setSelection`
+  routes to SVG editing / stands for its SVG. Known limits: the box mapping assumes the parent's
+  coordinate system is not rotated relative to the screen (a part inside a rotated group is moved in
+  that group's own space, which is right, but its frame is the axis-aligned screen box); parts sized
+  in percentages or with a CSS `transform` fall back to the matrix path; `<text>` with several runs
+  (tspans) is edited in the Tree tab's source.
 - `window.nbgDeck = { version, pdf: { prepare, restore, exportPdf }, edit: { start, commit,
   cancel, isEditing, list, format, buildEditedHtml, save, discard, discardSlide(slide),
   listFor(slide), slideAt(x, y) }, code: { open(el), show(el), close, isOpen, tab, refresh,
   target, source, setSource, apply, revert, rowOf(el), outlineRowOf(el), filter(q) }, shape: { select, selectMany,
   add, remove, toggle, solo, selectAll, deselect, selected, selection, reset, align(kind, ref),
   distribute('h'|'v', ref), order('front'|'forward'|'backward'|'back'), group, ungroup, groupOf,
-  shapesOf(slide), stackAt(x, y), enclosing(el), inside(el) }, resolveTextTarget,
+  shapesOf(slide), stackAt(x, y), enclosing(el), inside(el) }, svg: { edit(svg, part), end, isEditing,
+  target, part, selection, select(part), selectMany(list), add(part), remove(part), toggle(part), selectAll, selectInside(part), parts(svg),
+  partAt(x, y), set(name, value), text(value), geom('x'|'y'|'w'|'h', v),
+  nudge(dx, dy, resize), order(action), remove, duplicate, reset(svg), box(part), ownerOf(el) }, resolveTextTarget,
   resolveShapeTarget }` is exposed (`window.nbgPdf`
   aliases the pdf part); an external driver sets `window.__nbgPdfExternal = true` to keep the
   print hooks idle (`export-pdf.mjs` does).

@@ -33,9 +33,11 @@
  *     corner radius, opacity, shadow (NBG palette), Reset, Done — all inline style on the element.
  *
  * Several shapes at once (text blocks, shapes and images alike)
- *   - Shift+click a shape adds it to (or removes it from) the selection, Shift+drag on the slide
+ *   - Shift+click adds the smallest shape under the pointer to the selection (inside a selected shape it
+ *     removes that shape — as in the SVG editor), Shift+drag on the slide
  *     draws a selection box (every top-level shape fully inside is added), Ctrl/Cmd+A selects every
- *     top-level shape of the slide, Ctrl/Cmd+click picks one shape alone (even inside a group); the
+ *     top-level shape of the slide, Ctrl/Cmd+click selects everything inside the shape under the pointer (its
+ *     child shapes; a shape with nothing inside is picked alone, even a group member); the
  *     menu offers "Add to selection" / "Remove from selection" / "Select all shapes" as well. The
  *     frame spans the selection (each member gets a dashed mark), dragging moves all, handles scale
  *     all proportionally, arrows nudge all, the toolbar's style controls apply to all;
@@ -49,7 +51,33 @@
  *   - nested / overlapping shapes: the menu lists every shape under the pointer ("Select at this
  *     point": nested parts, their containers, shapes behind — a text block inside a card included),
  *     the toolbar's Stack list offers the enclosing shapes, the selected one and its child shapes,
- *     Ctrl/Cmd+click on the same spot cycles outward, Tab / Shift+Tab step out / in.
+ *     Ctrl/Cmd+click on a shape with nothing inside cycles outward at the same spot, Tab / Shift+Tab step out / in.
+ *
+ * SVG editing (block v12) — the parts of an inline <svg> (icons, diagrams, charts drawn in the deck)
+ *   - right-click an SVG → "Edit SVG" (or double-click the selected SVG, or click one of its parts in the
+ *     Tree tab): the SVG gets a dashed outline and its parts — path, rect, circle, ellipse, line, polyline,
+ *     polygon, text, image, use, g (nothing inside <defs>, <clipPath>, <mask>, <symbol>…) — become selectable:
+ *     a click picks the innermost part under the pointer (through the selected part's frame too: a click without a
+ *     drag there picks the part underneath, a drag moves the selection), Shift+click adds a part to the selection or
+ *     removes it (through the frame as well), Ctrl/Cmd+click selects what is inside the smallest part under the pointer —
+ *     a leaf alone; the members of a selected group when its frame is clicked — Ctrl/Cmd+A selects every top-level part,
+ *     the toolbar's All button too,
+ *     Tab the enclosing group, Shift+Tab the first part inside, the toolbar's Parts list any of them (drawing order);
+ *     several parts: one frame spans them (a dashed mark per part), dragging moves all, handles scale all, arrows
+ *     nudge all, and the toolbar's colours, width, opacity, order, Duplicate and Delete apply to every one;
+ *   - the selected part gets a frame with eight handles: drag inside to move, a handle to resize (Shift keeps
+ *     the proportions), arrows nudge by one SVG unit (Shift: ten), Alt+arrows resize. Geometry is written in
+ *     the part's parent coordinate system: x / y / width / height on a rect or image without a transform,
+ *     x / y / cx / cy / x1… on a plain move of text, use, circle, ellipse, line — otherwise a matrix()
+ *     prepended to the part's own transform, so the path data itself is never rewritten;
+ *   - the SVG row of the floating toolbar: Parts, X / Y / W / H (SVG units), fill and stroke (the NBG palette,
+ *     None, Default), stroke width, opacity, the text of a <text> part (one run), Order (front / forward /
+ *     backward / back — document order inside the parent; Ctrl/Cmd+] / [), Duplicate (Ctrl/Cmd+D), Delete,
+ *     Reset SVG (as designed), Done. Fill / stroke / width / opacity are written as presentation attributes,
+ *     or as the inline style property when the part already carries one;
+ *   - every change is one 'html' edit record of the <svg> element (its innerHTML), so it persists, lands in
+ *     the saved copy, is discarded with the slide and prints. Esc deselects the part, then ends the session;
+ *     Enter / Done end it; a click outside the SVG ends it too. Reset SVG drops the record.
  *
  * Detachable panels: the shape toolbar, the structure panel and the assistant can be moved into a
  * window of their own (⧉ in their header): a Document Picture-in-Picture window where the browser
@@ -63,9 +91,11 @@
  * hierarchy as the menu (front-most first, containers and shapes behind), plus Edit text; a click selects,
  * Shift+click adds, Esc / a click elsewhere closes it.
  *
- * One floating toolbar (#nbg-tools): the text formatting row and the shape & arrange rows live in a single
- * panel with one grip, one ⚓ and one ⧉ in a side strip; each row still shows / hides on its own (the
- * Toolbars section, a row's ✕, the modes), the panel shows with either. Anchored toolbar: dragging it
+ * One floating toolbar (#nbg-tools) with three tabs — Text (formatting), Shape (shape & arrange rows), SVG (parts) —
+ * in a single panel with one grip, one ⚓ and one ⧉ in a side strip. One tab's row shows at a time: the tab of the
+ * editor in use comes to the front on its own, a tab the viewer clicks stays in front until another editor takes over,
+ * a tab whose editor has nothing to work on is dimmed but opens (idle row); a row's ✕ or the menu's Toolbars section
+ * hides a tab (and the menu brings a tab to the front); the panel shows when any tab is wanted. Anchored toolbar: dragging it
  * anchors it — it opens at that spot from then on (ui.anchor.tools, per deck), shows ⚓; ⚓ or a
  * double-click on the grip releases it, and it follows the selection again.
  *
@@ -77,7 +107,7 @@
  * block level; the shape toolbar shows the selection's geometry and style; the structure panel
  * follows the selection and the slide; a slide change drops an off-screen selection.
  *
- * AI assistant — the menu's Assistant tab (menu "Ask the assistant", Ctrl/Cmd+Shift+L; travels with the menu when detached)
+ * AI assistant — the menu's Assistant tab (Ctrl/Cmd+Shift+L opens it; travels with the menu when detached; no separate menu item)
  *   - a request to an LLM, supported — each behind a checkbox — by a screenshot of the current slide
  *     (tab capture, our UI hidden, cropped to the slide), the slide's full HTML source with the deck's
  *     stylesheet, the selected element's source, and an image from the clipboard (paste into the
@@ -133,7 +163,9 @@
  * ai: { open, close, isOpen, view, send, test, settings, prompts, attach, clearImage, image, reply, apply, undo,
  * capture, hooks, lastRequest, providers }, shape: { select, selectMany,
  * add, remove, toggle, solo, selectAll, deselect, selected, selection, reset, align, distribute,
- * order, group, ungroup, groupOf, shapesOf }, config, roots, resolveTextTarget, resolveShapeTarget } is exposed; window.nbgPdf aliases
+ * order, group, ungroup, groupOf, shapesOf }, svg: { edit, end, isEditing, target, part, selection, select, selectMany, add,
+ * remove, toggle, selectAll, parts, partAt,
+ * set, text, geom, nudge, order, remove, duplicate, reset, box, ownerOf }, config, roots, resolveTextTarget, resolveShapeTarget } is exposed; window.nbgPdf aliases
  * the pdf part. An external driver (export-pdf.mjs, tests) sets window.__nbgPdfExternal = true so
  * the native print hooks stay out of its way.
  *
@@ -156,7 +188,7 @@
  */
 (function () {
   if (window.nbgDeck) return;
-  var VERSION = 11;
+  var VERSION = 12;
   // configuration hook (see the header): root selector, page mode, labels
   var CFG = (typeof window.nbgDeckMenuConfig === 'object' && window.nbgDeckMenuConfig) || {};
   function cfgStr(k) { return typeof CFG[k] === 'string' && CFG[k].trim() ? CFG[k].trim() : ''; }
@@ -201,7 +233,8 @@
   }
 
   /* ---------- target resolution ---------- */
-  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-tools, #nbg-text-tools, #nbg-shape-tools, #nbg-code, #nbg-ai, #nbg-ai-pop, #nbg-stack-pop';
+  var OURS = '#nbg-deck-menu, #nbg-deck-toast, #nbg-shape-box, #nbg-svg-box, #nbg-svg-marks, #nbg-sel-marks, #nbg-marquee, #nbg-hover, #nbg-tools, #nbg-text-tools, #nbg-shape-tools, #nbg-svg-tools, #nbg-code, #nbg-ai, #nbg-ai-pop, #nbg-stack-pop';
+  var SVG_NS = 'http://www.w3.org/2000/svg';
   var INLINE = /^(span|a|b|i|em|strong|small|code|sup|sub|mark|u|abbr|time|label|s|q)$/i;
   function hasOwnText(el) {
     for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3 && n.nodeValue.trim()) return true;
@@ -218,6 +251,7 @@
     // an inline run inside a text block edits the whole block (keeps the accent spans intact)
     while (el.parentElement && el.parentElement !== slide && INLINE.test(el.tagName) && hasOwnText(el.parentElement)) el = el.parentElement;
     if (/^(img|svg|video|canvas|input|textarea|select|button)$/i.test(el.tagName)) return null;
+    if (el.namespaceURI === SVG_NS) return null;   // SVG <text> is edited through "Edit SVG", not contenteditable
     return el;
   }
   function isBoxy(el) {
@@ -249,10 +283,13 @@
     return null;
   }
   function ancestorShapes(el) { var out = [], p = parentShape(el); while (p) { out.unshift(p); p = parentShape(p); } return out; }   // outermost first
+  // the element's box in artboard px — offsetWidth / offsetHeight, or the screen box unscaled for an <svg> (no offset box)
+  function offW(el) { return el.offsetWidth !== undefined ? el.offsetWidth : el.getBoundingClientRect().width / (slideScale(el) || 1); }
+  function offH(el) { return el.offsetHeight !== undefined ? el.offsetHeight : el.getBoundingClientRect().height / (slideScale(el) || 1); }
   function childShapes(el) {   // the first shape level inside el
     var out = [];
     Array.prototype.forEach.call(el.querySelectorAll('*'), function (c) {
-      if (!isShapeCandidate(c) || !c.offsetWidth || !c.offsetHeight) return;
+      if (!isShapeCandidate(c) || !offW(c) || !offH(c)) return;
       var p = c.parentElement; while (p && p !== el && !isShapeCandidate(p)) p = p.parentElement;
       if (p === el) out.push(c);
     });
@@ -268,10 +305,12 @@
     });
     return out;
   }
-  var lastPoint = null;   // where the pointer last went down / right-clicked (for Shift+Tab and Ctrl/Cmd+click cycling)
+  var lastPoint = null;   // where the pointer last went down / right-clicked (for Shift+Tab and the Ctrl/Cmd+click cycling on a leaf)
   function describe(el) {
     var cls = (el.getAttribute('class') || '').trim().split(/\s+/).filter(function (c) { return c && !/^nbg-/.test(c) && c !== 'active'; })[0];
-    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : cls ? '.' + cls : '') + ' · ' + Math.round(el.offsetWidth) + '×' + Math.round(el.offsetHeight);
+    var w = el.offsetWidth, h = el.offsetHeight;
+    if (w === undefined) { var r = el.getBoundingClientRect(), sc = slideScale(el) || 1; w = r.width / sc; h = r.height / sc; }   // SVG elements have no offset box: artboard px from the screen box
+    return el.tagName.toLowerCase() + (el.id ? '#' + el.id : cls ? '.' + cls : '') + ' · ' + Math.round(w) + '×' + Math.round(h);
   }
 
   /* ---------- edit records + persistence ---------- */
@@ -319,8 +358,8 @@
 
   /* ---------- toolbar visibility: 'auto' (with the selection), 'on' (pinned), 'off' (closed by the viewer) ---------- */
   var UI_KEY = 'nbg-deck-ui:' + location.pathname;
-  var ui = { text: 'auto', shape: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false, split: 0.55, anchor: { tools: null } };   // anchor: where the viewer dragged the toolbar — it opens there until released   // split: the Tree tab's share above the source editor   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
-  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; if (uiStored.anchor && typeof uiStored.anchor === 'object') ['tools'].forEach(function (k) { var a = uiStored.anchor[k]; if (a && typeof a.left === 'number' && typeof a.top === 'number') ui.anchor[k] = { left: a.left, top: a.top }; }); } } catch (e) { /* storage unavailable */ }
+  var ui = { text: 'auto', shape: 'auto', svg: 'auto', code: 'auto', ai: 'auto', fold: { code: false, ai: false }, menuFold: false, split: 0.55, anchor: { tools: null } };   // anchor: where the viewer dragged the toolbar — it opens there until released   // split: the Tree tab's share above the source editor   // code / ai: 'auto' = opens on request only; fold: collapsed to the header; menuFold: the menu's Toolbars section collapsed
+  try { var uiStored = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (uiStored) { ['text', 'shape', 'svg', 'code', 'ai'].forEach(function (k) { if (/^(auto|on|off)$/.test(uiStored[k])) ui[k] = uiStored[k]; }); if (uiStored.fold && typeof uiStored.fold === 'object') ['code', 'ai'].forEach(function (k) { if (typeof uiStored.fold[k] === 'boolean') ui.fold[k] = uiStored.fold[k]; }); if (typeof uiStored.menuFold === 'boolean') ui.menuFold = uiStored.menuFold; if (typeof uiStored.split === 'number' && uiStored.split >= 0.1 && uiStored.split <= 0.9) ui.split = uiStored.split; if (uiStored.anchor && typeof uiStored.anchor === 'object') ['tools'].forEach(function (k) { var a = uiStored.anchor[k]; if (a && typeof a.left === 'number' && typeof a.top === 'number') ui.anchor[k] = { left: a.left, top: a.top }; }); } } catch (e) { /* storage unavailable */ }
   // the structure and assistant panels collapse to their header row (the ▾ / ▸ button); remembered per deck
   function applyFold(k) {
     return;   // the structure and the assistant live in the menu now — nothing folds
@@ -329,7 +368,7 @@
   }
   function setFold(k, on) { return; }   // kept for the API; the panels are tabs of the menu and do not fold
   function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) { /* ignore */ } }
-  var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', code: 'Structure & HTML', ai: 'AI assistant', menu: 'Menu & structure', tools: 'Text & shape toolbar' };
+  var TOOLBAR_NAMES = { text: 'Text formatting', shape: 'Shape & arrange', svg: 'SVG parts', code: 'Structure & HTML', ai: 'AI assistant', menu: 'Menu & structure', tools: 'Text, shape & SVG toolbar' };
   function textTargets() { return editing ? [editing.el] : sel.filter(hasOwnText); }   // what the text toolbar works on
   function toolbarWanted(k) {
     if (isDetached(k)) return true;                 // a detached panel stays in its window (idle when nothing applies)
@@ -337,18 +376,46 @@
     if (ui[k] === 'on') return true;
     if (k === 'text') return !!editing || textTargets().length > 0;
     if (k === 'shape') return !!shape;
+    if (k === 'svg') return !!svgEd;
     return false;                                   // the structure and assistant panels open on request only
   }
-  function toolbarPanel(k) { return k === 'text' ? tools : k === 'shape' ? stools : k === 'tools' ? tbar : k === 'code' ? code : k === 'menu' ? menu : ai; }
-  function toolbarVisible(k) { var p = toolbarPanel(k); return !!(p && !p.hidden); }
-  function setToolbarMode(k, mode) { ui[k] = mode; uiSave(); syncToolbars(); }
+  function toolbarPanel(k) { return k === 'text' ? tools : k === 'shape' ? stools : k === 'svg' ? gtools : k === 'tools' ? tbar : k === 'code' ? code : k === 'menu' ? menu : ai; }
+  function toolbarVisible(k) { if (k === 'text' || k === 'shape' || k === 'svg') return !!(tbar && !tbar.hidden && ui[k] !== 'off'); var p = toolbarPanel(k); return !!(p && !p.hidden); }   // text / shape / svg: their tab is on the toolbar
+  function setToolbarMode(k, mode) { ui[k] = mode; uiSave(); if (mode === 'on' && TB_TABS.indexOf(k) >= 0) tbTab = k; syncToolbars(); }   // pinning a tab brings it to the front
   // show / hide every toolbar according to its mode and the current selection, then lay them out
+  // the one floating toolbar has three tabs — Text, Shape, SVG — one row at a time: the tab of the editor in use comes to the
+  // front on its own (tbAuto), a tab the viewer picked stays until another editor takes over; the panel shows when any tab is
+  // wanted (its editor applies, or it is pinned); a tab whose editor has nothing to work on is dimmed but still opens (idle row)
+  var TB_TABS = ['text', 'shape', 'svg'], tbTab = null, tbAuto = null;
+  function tbApplies(k) { return k === 'text' ? !!editing || textTargets().length > 0 : k === 'shape' ? !!shape : k === 'svg' ? !!svgEd : false; }
+  // the editor in use: text being edited; a selection made of text blocks only → Text, any other selection → Shape; an SVG session → SVG
+  function tbAutoKind() { return editing ? 'text' : shape ? (sel.length && sel.every(hasOwnText) ? 'text' : 'shape') : svgEd ? 'svg' : textTargets().length ? 'text' : null; }
+  function setTbTab(k) { if (TB_TABS.indexOf(k) < 0) return false; tbTab = k; if (ui[k] === 'off') ui[k] = 'on'; syncToolbars(); return true; }
   function syncToolbars() {
-    if (toolbarWanted('text')) { if (!tools) buildTools(); tools.hidden = false; } else if (tools) { tools.hidden = true; toolsSel = null; }
-    if (toolbarWanted('shape')) { if (!stools) buildShapeTools(); stools.hidden = false; } else if (stools) stools.hidden = true;
-    if (tbar) tbar.hidden = !((tools && !tools.hidden) || (stools && !stools.hidden));   // the one floating toolbar: shown with either row
-    layoutTools(); layoutShapeTools(); placeTbar(); layoutAi();
+    var want = {}, any = false;
+    TB_TABS.forEach(function (k) { want[k] = toolbarWanted(k); if (want[k]) any = true; });
+    var auto = tbAutoKind();
+    if (auto && auto !== tbAuto) tbTab = auto;   // the editor in use takes the front
+    tbAuto = auto;
+    if (!tbTab || ui[tbTab] === 'off' || (!want[tbTab] && !any)) tbTab = TB_TABS.filter(function (k) { return want[k]; })[0] || (any ? tbTab : null);
+    if (any && tbTab && ui[tbTab] === 'off') tbTab = TB_TABS.filter(function (k) { return want[k]; })[0] || null;
+    if (any) { ensureTbar(); if (tbTab === 'text' && !tools) buildTools(); if (tbTab === 'shape' && !stools) buildShapeTools(); if (tbTab === 'svg' && !gtools) buildSvgTools(); }
+    if (tools) tools.hidden = !(any && tbTab === 'text'); if (!any || tbTab !== 'text') toolsSel = null;
+    if (stools) stools.hidden = !(any && tbTab === 'shape');
+    if (gtools) gtools.hidden = !(any && tbTab === 'svg');
+    if (tbar) { tbar.hidden = !any; renderTbTabs(); }
+    layoutTools(); layoutShapeTools(); layoutSvgTools(); placeTbar(); layoutAi();
     if (menuHeld() && menu && !menu.hidden) refreshMenu();
+  }
+  function renderTbTabs() {
+    if (!tbar) return;
+    Array.prototype.forEach.call(tbar.querySelectorAll('.nbg-tbtab'), function (b) {
+      var k = b.getAttribute('data-tab');
+      b.hidden = ui[k] === 'off';
+      b.classList.toggle('nbg-on', k === tbTab);
+      b.classList.toggle('nbg-tbidle', !tbApplies(k));
+      b.title = TOOLBAR_NAMES[k] + (tbApplies(k) ? '' : k === 'text' ? ' — double-click a text to edit it, or select text blocks' : k === 'shape' ? ' — right-click → Resize / move shape, or double-click a shape' : ' — right-click an SVG → Edit SVG');
+    });
   }
 
   /* ---------- text editing ---------- */
@@ -356,6 +423,7 @@
     if (!el || busy) return false;
     if (editing && editing.el === el) return true;
     if (editing) commitEdit();
+    if (svgEd) svgEnd();
     deselectShape();
     closeMenu();
     var sel = window.getSelection(), ranges = [];
@@ -527,10 +595,14 @@
     tbar = document.createElement('div');
     tbar.id = 'nbg-tools'; tbar.className = 'nbg-panel nbg-tbar'; tbar.hidden = true;
     tbar.setAttribute('role', 'toolbar'); tbar.setAttribute('aria-label', 'Text and shape toolbar');
-    tbar.innerHTML = '<div class="nbg-tbside"><button type="button" data-tb="detach" class="nbg-tquiet nbg-detach" title="Detach this toolbar into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the toolbar back">⧉</button></div><div class="nbg-tbrows"></div>';
+    tbar.innerHTML = '<div class="nbg-tbside"><button type="button" data-tb="detach" class="nbg-tquiet nbg-detach" title="Detach this toolbar into its own window — in Chrome / Edge an always-on-top window you can move anywhere, even off the browser; close it to bring the toolbar back">⧉</button></div>' +
+      '<div class="nbg-tbmain"><div class="nbg-tbtabs" role="tablist">' + TB_TABS.map(function (k) { return '<button type="button" role="tab" class="nbg-tbtab" data-tab="' + k + '">' + (k === 'text' ? 'Text' : k === 'shape' ? 'Shape' : 'SVG') + '</button>'; }).join('') + '</div><div class="nbg-tbrows"></div></div>';
     tbar.querySelector('[data-tb=detach]').addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); detachPanel('tools'); });
+    var tabs = tbar.querySelector('.nbg-tbtabs');
+    tabs.addEventListener('pointerdown', function (e) { e.preventDefault(); e.stopPropagation(); if (editing) saveSelection(); });   // keep the text being edited focused
+    tabs.addEventListener('click', function (e) { var b = e.target.closest('.nbg-tbtab'); if (!b) return; e.preventDefault(); e.stopPropagation(); setTbTab(b.getAttribute('data-tab')); if (editing) restoreSelection(); });
     document.body.appendChild(tbar);
-    makeMovable(tbar, placeTbar, null, null, 'tools');   // one grip, one anchor for both rows
+    makeMovable(tbar, placeTbar, null, null, 'tools');   // one grip, one anchor for the three tabs
     return tbar;
   }
   function placeTbar() {   // next to what is being edited or selected; docked top-left when idle; where it is anchored
@@ -538,6 +610,7 @@
     var anchor = null;
     if (editing) anchor = editing.el.getBoundingClientRect();
     else if (sel.length) anchor = unionRect(sel);
+    else if (svgEd) anchor = (svgEd.part && svgEd.part.isConnected ? svgEd.part : svgEd.svg).getBoundingClientRect();
     else { var tt = textTargets(); if (tt.length) anchor = unionRect(tt); }
     placePanel(tbar, anchor);
   }
@@ -845,8 +918,8 @@
   function underPoint(x, y) { return document.elementsFromPoint(x, y).filter(function (n) { return !n.closest(OURS); })[0] || null; }
   // the selected shape that is (or contains) t — a click on a nested part of a selected shape means that shape
   function ownerOf(t) { var o = null; if (t) sel.forEach(function (m) { if (!o && (m === t || m.contains(t))) o = m; }); return o; }
-  // the outermost shape containing t (backdrops excluded) — what Shift+click, the selection box and
-  // Select all work with; Ctrl/Cmd+click and the menu keep the precise element under the pointer
+  // the outermost shape containing t (backdrops excluded) — what the selection box and Select all work with;
+  // Shift+click takes the smallest shape under the pointer, Ctrl/Cmd+click (everything inside it) and the menu the precise element
   function topShape(t) {
     if (!t) return null;
     var slide = slideOf(t), best = null, el = t;
@@ -854,6 +927,10 @@
     return best || t;
   }
   function pick(t, precise) { return ownerOf(t) || (precise ? t : topShape(t)); }
+  // Shift+click: inside a selected shape it removes that shape; elsewhere it adds the smallest shape under the point (as in the
+  // SVG editor; backdrops excluded)
+  function shiftPick(x, y, t) { var st = shapeStack(x, y).filter(function (el) { return !isBackdrop(el, slideOf(el)); }); return st[0] || pick(t, true); }
+  function shiftToggle(x, y, t) { var st = shiftPick(x, y, t); if (!st) return false; var own = ownerOf(st); return own ? removeFromSelection(own) : addToSelection(st); }
 
   /* selection model — groups are logical: members carry data-nbg-group="<id>" (a 'group' edit record) */
   function groupId(el) { return el.getAttribute('data-nbg-group') || null; }
@@ -867,9 +944,9 @@
     els.forEach(function (el) { if (el) groupMembers(el).forEach(function (m) { if (out.indexOf(m) < 0) out.push(m); }); });
     return out.sort(docOrder);
   }
-  function isShapeEl(el) { return el.offsetWidth > 0 && el.offsetHeight > 0 && resolveShapeTarget(el) === el; }
+  function isShapeEl(el) { return offW(el) > 0 && offH(el) > 0 && resolveShapeTarget(el) === el; }
   // a layer that fills the slide is its backdrop, not a shape (it can still be picked by right-click)
-  function isBackdrop(el, slide) { return el.offsetWidth >= slide.offsetWidth * 0.98 && el.offsetHeight >= slide.offsetHeight * 0.98; }
+  function isBackdrop(el, slide) { return offW(el) >= slide.offsetWidth * 0.98 && offH(el) >= slide.offsetHeight * 0.98; }
   function slideShapes(slide) {   // the top-level shapes of a slide: shapes with no shape ancestor, backdrops excluded
     var all = Array.prototype.filter.call(slide.querySelectorAll('*'), function (el) { return isShapeEl(el) && !isBackdrop(el, slide); });
     return all.filter(function (el) { var p = el.parentElement; while (p && p !== slide) { if (all.indexOf(p) >= 0) return false; p = p.parentElement; } return true; });
@@ -883,13 +960,15 @@
   function setSelection(els, primary, opts) {
     opts = opts || {};
     var list = [];
+    els = els.map(function (el) { return el && el.namespaceURI === SVG_NS && svgTag(el) !== 'svg' ? svgOwner(el) : el; });   // a part of an SVG stands for its SVG here
     (opts.raw ? els : expandGroups(els)).forEach(function (el) { if (el && list.indexOf(el) < 0) list.push(el); });
     // a container and something inside it never travel together (a move would apply twice): keep the outer one
     var nested = list.filter(function (el) { return list.some(function (o) { return o !== el && o.contains(el); }); });
-    if (nested.length) { list = list.filter(function (el) { return nested.indexOf(el) < 0; }); if (opts.toast !== false || nested.length) toast(nested.length + ' inner shape' + (nested.length === 1 ? '' : 's') + ' left out — its container is selected. Ctrl/Cmd+click picks an inner shape on its own.', 3000); }
+    if (nested.length) { list = list.filter(function (el) { return nested.indexOf(el) < 0; }); if (opts.toast !== false || nested.length) toast(nested.length + ' inner shape' + (nested.length === 1 ? '' : 's') + ' left out — its container is selected. Ctrl/Cmd+click the container to select everything inside it; the menu’s Select at this point picks one inner shape.', 3000); }
     if (!list.length) { deselectShape(); return false; }
     if (busy) return false;
     if (editing) commitEdit();
+    if (svgEd) svgEnd();
     closeMenu();
     ensureBox();
     sel = list;
@@ -905,6 +984,7 @@
   function selectShapes(els) { return setSelection(els || [], null); }
   function selectSolo(el, quiet) {   // one element on its own, even when it belongs to a group
     if (!el) return false;
+    if (el.namespaceURI === SVG_NS && svgTag(el) !== 'svg') { var own = svgOwner(el); return !!own && svgEdit(own, el); }   // a part of an SVG is edited inside its SVG, never framed as a shape
     var ok = setSelection([el], el, { raw: true, toast: false });
     if (ok && !quiet) toast(groupId(el) ? 'One member of the group selected on its own — Shift+click adds shapes, Esc when done.' : 'Shape selected — Shift+click adds another shape, Esc when done.', 3000);
     return ok;
@@ -918,6 +998,15 @@
     var el = st[i >= 0 ? (i + 1) % st.length : 0], pos = st.indexOf(el);
     var ok = selectSolo(el, true);
     if (ok) toast(describe(el) + ' selected' + (st.length > 1 ? ' — ' + (pos + 1) + ' of ' + st.length + ' at this point; Ctrl/Cmd+click again for the next one, Tab / Shift+Tab move out / in, or pick from the toolbar’s Stack list.' : '.'), 3500);
+    return ok;
+  }
+  // Ctrl/Cmd+click: everything inside the shape under the point — its child shapes (whole groups); a shape with nothing
+  // inside is picked alone (Ctrl/Cmd+click again at the same spot: the next one out)
+  function selectInside(x, y, t) {
+    var el = t || shapeStack(x, y)[0] || null, kids = el ? childShapes(el) : [];
+    if (!kids.length) return pickAtPoint(x, y, el);
+    var ok = setSelection(kids, kids[kids.length - 1], { toast: false });
+    if (ok) toast(sel.length + ' shape' + (sel.length === 1 ? '' : 's') + ' inside ' + describe(el) + ' selected — Shift+click adds or removes one, Tab selects the container.', 3000);
     return ok;
   }
   function addToSelection(el) {
@@ -967,8 +1056,9 @@
     box.addEventListener('pointerdown', onShapePointerDown);
     box.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); });     // the deck's own click handlers stay out of it
     box.addEventListener('dblclick', function (e) {
-      // double-click on the frame: hand over to text editing of what is underneath
-      var t = resolveTextTarget(underPoint(e.clientX, e.clientY));
+      // double-click on the frame: hand over to text editing of what is underneath — or, on a selected SVG, to its parts
+      var under = underPoint(e.clientX, e.clientY), t = resolveTextTarget(under), sv = svgOwner(under);
+      if (sv && sel.length === 1 && shape && shape.el === sv) { e.preventDefault(); e.stopPropagation(); svgEdit(sv, svgLeafAt(e.clientX, e.clientY, sv)); return; }
       if (t) { e.preventDefault(); e.stopPropagation(); deselectShape(); startEdit(t, false); }
     });
     box.addEventListener('contextmenu', function (e) {
@@ -1047,8 +1137,8 @@
     if (!shape || e.button !== 0) return;
     e.preventDefault(); e.stopPropagation();
     if (e.shiftKey || e.metaKey || e.ctrlKey) {                     // adjust the selection through the frame
-      var t = pick(resolveShapeTarget(underPoint(e.clientX, e.clientY)), !e.shiftKey);
-      if (e.shiftKey) { if (t) toggleSelection(t); } else pickAtPoint(e.clientX, e.clientY, t);
+      var under = resolveShapeTarget(underPoint(e.clientX, e.clientY));
+      if (e.shiftKey) shiftToggle(e.clientX, e.clientY, under); else selectInside(e.clientX, e.clientY, pick(under, true));
       swallowClick = true;
       return;
     }
@@ -1106,7 +1196,7 @@
     var t = e.target; if (!t || !t.closest || t.closest(OURS)) return false;
     if (t.closest('a[href], input, textarea, select, button, [contenteditable="true"]')) return false;
     var slide = rootOf(t); if (!slide) return false;
-    if (!shape && !e.shiftKey) return false;                          // Ctrl/Cmd+click only refines an existing selection
+    if (!shape && !e.shiftKey && !resolveShapeTarget(t)) return false;   // without a selection, Ctrl/Cmd+click needs a shape under the pointer (Shift+drag may start on empty ground)
     e.preventDefault(); e.stopPropagation();
     marquee = { x: e.clientX, y: e.clientY, slide: slide, target: resolveShapeTarget(t), shift: e.shiftKey, pointerId: e.pointerId, moved: false };
     swallowClick = true;
@@ -1126,7 +1216,7 @@
     var m = marquee; marquee = null;
     if (rubber) rubber.hidden = true;
     if (cancel) return;
-    if (!m.moved) { var t = pick(m.target, !m.shift); if (m.shift) { if (t) toggleSelection(t); } else pickAtPoint(m.x, m.y, t); return; }
+    if (!m.moved) { if (m.shift) shiftToggle(m.x, m.y, m.target); else selectInside(m.x, m.y, pick(m.target, true)); return; }
     var r = marqueeRect(m, e);
     var hits = slideShapes(m.slide).filter(function (el) { var b = el.getBoundingClientRect(); return b.left >= r.left - 1 && b.right <= r.right + 1 && b.top >= r.top - 1 && b.bottom <= r.bottom + 1; });
     if (!hits.length) { toast('No shape lies fully inside the box — drag around whole shapes.', 2000); return; }
@@ -1136,16 +1226,18 @@
   }
   window.addEventListener('pointermove', function (e) {
     if (marquee && e.pointerId === marquee.pointerId) { e.preventDefault(); moveMarquee(e); return; }
+    if (gdrag && e.pointerId === gdrag.pointerId) { e.preventDefault(); onSvgPointerMove(e); return; }
     onShapePointerMove(e);
   }, true);
   window.addEventListener('pointerup', function (e) {
     if (marquee && e.pointerId === marquee.pointerId) { finishMarquee(e, false); return; }
+    if (gdrag && e.pointerId === gdrag.pointerId) { finishSvgDrag(false); return; }
     if (drag && e.pointerId === drag.pointerId) finishDrag(false);
   }, true);
-  window.addEventListener('pointercancel', function (e) { if (marquee) finishMarquee(e, true); finishDrag(true); }, true);
+  window.addEventListener('pointercancel', function (e) { if (marquee) finishMarquee(e, true); finishDrag(true); finishSvgDrag(true); }, true);
   document.addEventListener('click', function (e) { if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); } }, true);
-  window.addEventListener('resize', function () { requestAnimationFrame(layoutBox); });
-  window.addEventListener('scroll', function () { requestAnimationFrame(layoutBox); }, true);
+  window.addEventListener('resize', function () { requestAnimationFrame(layoutBox); requestAnimationFrame(layoutGbox); });
+  window.addEventListener('scroll', function () { requestAnimationFrame(layoutBox); requestAnimationFrame(layoutGbox); }, true);
 
   /* ---------- arrange: align, distribute, order, group ---------- */
   function refRectFor(mode) {
@@ -1261,7 +1353,7 @@
     var id = 'g' + Date.now().toString(36);
     sel.forEach(function (el) { var pre = groupId(el); apply(el, 'group', id); track(el, 'group', pre); });
     setSelection(sel, shape.el, { toast: false });
-    toast('Grouped ' + sel.length + ' shapes — they now select, move, resize and align together. Ctrl/Cmd+click picks one member; Ungroup separates them. ' + changesLabel() + '.', 4000);
+    toast('Grouped ' + sel.length + ' shapes — they now select, move, resize and align together. The menu’s Select at this point or the toolbar’s Stack list picks one member; Ungroup separates them. ' + changesLabel() + '.', 4000);
     return true;
   }
   function ungroupSelection() {
@@ -1381,7 +1473,7 @@
     h += '</div><div class="nbg-row">';
     h += '<span class="nbg-tlabel" data-count>1 shape</span>';
     h += '<select data-a="stack" title="Stack: the shapes enclosing the selected one and the shapes inside it — pick the one you want (Tab / Shift+Tab step out / in)"></select>';
-    h += '<button type="button" data-a="all" class="nbg-tquiet" title="Select every shape on this ' + AREA + ' (Ctrl/Cmd+A) — Shift+click adds one, Shift+drag draws a selection box, Ctrl/Cmd+click picks one alone">All</button>';
+    h += '<button type="button" data-a="all" class="nbg-tquiet" title="Select every shape on this ' + AREA + ' (Ctrl/Cmd+A) — Shift+click adds one, Shift+drag draws a selection box, Ctrl/Cmd+click selects everything inside a shape">All</button>';
     h += '<i class="nbg-tsep"></i><span class="nbg-tlabel">Order</span>';
     h += abtn('order', 'front', 'Bring to front (Ctrl/Cmd+Shift+])') + abtn('order', 'forward', 'Bring forward one step (Ctrl/Cmd+])') + abtn('order', 'backward', 'Send backward one step (Ctrl/Cmd+[)') + abtn('order', 'back', 'Send to back (Ctrl/Cmd+Shift+[)');
     h += '<i class="nbg-tsep"></i><span class="nbg-tlabel">Align</span>';
@@ -1472,6 +1564,459 @@
     stools.querySelector('[data-a=ungroup]').classList.toggle('nbg-off', !grouped);
   }
 
+  /* ---------- SVG editing: the parts of an inline <svg> (paths, shapes, text, groups) ---------- */
+  var svgEd = null;                    // { svg, parts, part } — the SVG in editing, its selected parts (document order) and the primary one (the last picked)
+  var gtools = null, gbox = null, gchip = null, gmarks = null, gdrag = null, ghoverRaf = 0, svgPartsList = [];
+  var SVG_PART = /^(path|rect|circle|ellipse|line|polyline|polygon|text|image|use|g)$/;
+  var SVG_SKIP = /^(defs|clipPath|mask|symbol|pattern|marker|linearGradient|radialGradient|filter|metadata|title|desc|style|script)$/;
+  var SVG_GEOM_ATTRS = ['transform', 'x', 'y', 'width', 'height', 'cx', 'cy', 'x1', 'y1', 'x2', 'y2'];
+  var SVG_PAINTS = [['', 'Default'], ['none', 'None'], ['#003841', 'Deep teal'], ['#007B85', 'Teal'], ['#00ADBF', 'Bright cyan'], ['#00CFE7', 'Electric cyan'], ['#0A1416', 'Black'], ['#5B6B6D', 'Grey'], ['#F5F8F6', 'Cream'], ['#FFFFFF', 'White']];
+  function svgTag(el) { return el && el.nodeType === 1 && el.namespaceURI === SVG_NS ? el.tagName : ''; }   // SVG tag names keep their case (clipPath)
+  // the outermost inline <svg> that holds t (inside a root, none of ours)
+  function svgOwner(t) {
+    if (t && t.nodeType === 3) t = t.parentElement;
+    if (!t || !t.closest || t.closest(OURS)) return null;
+    var slide = rootOf(t); if (!slide) return null;
+    var out = null, p = t;
+    while (p && p !== slide) { if (svgTag(p) === 'svg') out = p; p = p.parentElement; }
+    return out;
+  }
+  function svgInDefs(el, svg) { var p = el.parentElement; while (p && p !== svg) { if (SVG_SKIP.test(svgTag(p))) return true; p = p.parentElement; } return false; }
+  function isSvgPart(el, svg) { return !!el && !!svg && el !== svg && svg.contains(el) && SVG_PART.test(svgTag(el)) && !svgInDefs(el, svg); }
+  function svgParts(svg) { return Array.prototype.filter.call(svg.querySelectorAll('*'), function (el) { return isSvgPart(el, svg); }); }   // drawing order, back to front
+  function svgLeafAt(x, y, svg) {   // the innermost part (not a group) under a point
+    var hit = null;
+    document.elementsFromPoint(x, y).some(function (el) {
+      if (el === svg || !svg.contains(el) || el.closest(OURS)) return false;
+      var p = el; while (p && p !== svg && !(SVG_PART.test(svgTag(p)) && svgTag(p) !== 'g')) p = p.parentElement;
+      if (p && p !== svg && isSvgPart(p, svg)) { hit = p; return true; }
+      return false;
+    });
+    return hit;
+  }
+  function svgParentPart(p) { var q = p.parentElement; while (q && q !== svgEd.svg) { if (svgTag(q) === 'g') return q; q = q.parentElement; } return null; }
+  function svgChildParts(p) { return Array.prototype.filter.call(p.children, function (c) { return SVG_PART.test(svgTag(c)); }); }
+  function svgDepth(x) { var d = 0, q = x.parentElement; while (q && q !== svgEd.svg) { if (svgTag(q) === 'g') d++; q = q.parentElement; } return d; }
+  function svgPartLabel(x) {
+    var tag = svgTag(x), t = tag === 'text' ? x.textContent.replace(/\s+/g, ' ').trim() : '', cls = (x.getAttribute('class') || '').trim().split(/\s+/)[0];
+    return tag + (x.id ? '#' + x.id : cls ? '.' + cls : '') + (t ? ' “' + (t.length > 24 ? t.slice(0, 21) + '…' : t) + '”' : '');
+  }
+  /* geometry: the part's screen box mapped into its parent's user space (decks do not rotate whole SVGs, so the box stays a box) */
+  function svgParentEl(part) { var p = part.parentNode; return p && typeof p.getScreenCTM === 'function' ? p : svgEd.svg; }
+  function svgToParent(part, x, y) {
+    var m = svgParentEl(part).getScreenCTM(); if (!m) return null;
+    var pt = new DOMPoint(x, y).matrixTransform(m.inverse());
+    return { x: pt.x, y: pt.y };
+  }
+  function svgFromParent(part, x, y) {   // the other way: a point of the parent's user space on screen
+    var m = svgParentEl(part).getScreenCTM(); if (!m) return null;
+    var pt = new DOMPoint(x, y).matrixTransform(m);
+    return { x: pt.x, y: pt.y };
+  }
+  function svgBoxToParent(part, R) {   // a screen rect → the parent's user space
+    var a = svgToParent(part, R.left, R.top), b = svgToParent(part, R.left + R.width, R.top + R.height);
+    if (!a || !b) return null;
+    return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+  }
+  function svgParentRect(part) { return svgBoxToParent(part, part.getBoundingClientRect()); }
+  function svgSnap(part) { var s = {}; SVG_GEOM_ATTRS.forEach(function (a) { s[a] = part.hasAttribute(a) ? part.getAttribute(a) : null; }); return s; }
+  function svgRestore(part, s) { Object.keys(s).forEach(function (a) { if (s[a] === null) part.removeAttribute(a); else part.setAttribute(a, s[a]); }); }
+  function r3(n) { return String(Math.round(n * 1000) / 1000); }
+  function svgNum(part, a) { var v = part.getAttribute(a); return v !== null && /^\s*-?(\d+\.?\d*|\.\d+)\s*$/.test(v) ? parseFloat(v) : null; }   // a plain number (not a list, not a percentage)
+  function svgMatrixOf(part) { var l = part.transform && part.transform.baseVal, c = l && l.numberOfItems ? l.consolidate() : null; return c ? c.matrix : null; }
+  // place the part so that its box in the parent's space goes from b0 to b1: plain attributes where the element has them and
+  // carries no transform (x / y / width / height of a rect or image; x / y, cx / cy, x1… on a pure move), a matrix otherwise
+  function svgPlace(part, b0, b1) {
+    var tag = svgTag(part), dx = b1.x - b0.x, dy = b1.y - b0.y, sx = b0.w > 1e-6 ? b1.w / b0.w : 1, sy = b0.h > 1e-6 ? b1.h / b0.h : 1;
+    var moveOnly = Math.abs(sx - 1) < 1e-9 && Math.abs(sy - 1) < 1e-9, plain = !part.hasAttribute('transform') && !(part.style && part.style.transform);
+    function shiftAttrs(pairs) { pairs.forEach(function (p) { var v = svgNum(part, p[0]); part.setAttribute(p[0], r3((v === null ? 0 : v) + p[1])); }); }
+    if (plain && (tag === 'rect' || tag === 'image') && svgNum(part, 'width') !== null && svgNum(part, 'height') !== null) {
+      shiftAttrs([['x', dx], ['y', dy]]);
+      if (!moveOnly) { part.setAttribute('width', r3(svgNum(part, 'width') * sx)); part.setAttribute('height', r3(svgNum(part, 'height') * sy)); }
+      return;
+    }
+    if (plain && moveOnly) {
+      if ((tag === 'text' || tag === 'use' || tag === 'image') && (part.getAttribute('x') === null || svgNum(part, 'x') !== null) && (part.getAttribute('y') === null || svgNum(part, 'y') !== null)) { shiftAttrs([['x', dx], ['y', dy]]); return; }
+      if ((tag === 'circle' || tag === 'ellipse') && (part.getAttribute('cx') === null || svgNum(part, 'cx') !== null) && (part.getAttribute('cy') === null || svgNum(part, 'cy') !== null)) { shiftAttrs([['cx', dx], ['cy', dy]]); return; }
+      if (tag === 'line' && ['x1', 'y1', 'x2', 'y2'].every(function (a) { return part.getAttribute(a) === null || svgNum(part, a) !== null; })) { shiftAttrs([['x1', dx], ['y1', dy], ['x2', dx], ['y2', dy]]); return; }
+    }
+    // M = translate(b1 − s·b0) · scale(s), applied in the parent's space before the part's own transform
+    var M = new DOMMatrix([sx, 0, 0, sy, b1.x - sx * b0.x, b1.y - sy * b0.y]), old = svgMatrixOf(part), R = old ? M.multiply(old) : M;
+    part.setAttribute('transform', 'matrix(' + [R.a, R.b, R.c, R.d, R.e, R.f].map(r3).join(' ') + ')');
+  }
+  // the selected parts as drag members: their screen box, parent-space box and attribute snapshot at the start
+  function svgMembers() { return svgSel().map(function (m) { return { el: m, r0: m.getBoundingClientRect(), b0: svgParentRect(m), snap: svgSnap(m) }; }).filter(function (m) { return !!m.b0; }); }
+  // move / scale every member so that the selection's screen box goes from U0 to U1 (each member keeps its place within the box)
+  function svgPlaceMembers(ms, U0, U1) {
+    var sx = U0.width > 1e-6 ? U1.width / U0.width : 1, sy = U0.height > 1e-6 ? U1.height / U0.height : 1;
+    ms.forEach(function (m) {
+      var fx = U0.width > 1e-6 ? (m.r0.left - U0.left) / U0.width : 0, fy = U0.height > 1e-6 ? (m.r0.top - U0.top) / U0.height : 0;
+      var R1 = { left: U1.left + fx * U1.width, top: U1.top + fy * U1.height, width: m.r0.width * sx, height: m.r0.height * sy };
+      svgRestore(m.el, m.snap);   // always from the start: no accumulated rounding
+      var b1 = svgBoxToParent(m.el, R1); if (b1) svgPlace(m.el, m.b0, b1);
+    });
+  }
+  // run fn on the SVG in editing, then record the SVG's innerHTML as its one 'html' edit; returns 1 when it changed
+  function svgOp(fn) {
+    if (!svgEd) return 0;
+    var svg = svgEd.svg, pre = svg.innerHTML;
+    fn();
+    var n = track(svg, 'html', pre) ? 1 : 0;
+    layoutGbox(); layoutSvgTools(); codeRefresh();
+    return n;
+  }
+  /* the session and its selection */
+  function svgSel() { return svgEd ? svgEd.parts.filter(function (p) { return p.isConnected; }) : []; }
+  function svgPrimary() { var ms = svgSel(); return ms.length ? (svgEd.part && ms.indexOf(svgEd.part) >= 0 ? svgEd.part : ms[ms.length - 1]) : null; }
+  function svgEdit(svg, part) {
+    if (!svg || svgTag(svg) !== 'svg' || busy) return false;
+    if (svgEd && svgEd.svg === svg) { if (part) svgSelectPart(part, true); return true; }
+    if (svgEd) svgEnd();
+    if (editing) commitEdit();
+    deselectShape();
+    closeMenu();
+    ensureGbox();
+    svgEd = { svg: svg, parts: [], part: null };
+    svg.classList.add('nbg-svg-editing');
+    document.addEventListener('pointermove', onSvgHover, true);
+    if (part && isSvgPart(part, svg)) { svgEd.parts = [part]; svgEd.part = part; }
+    syncToolbars(); layoutGbox(); codeFollow();
+    var np = svgParts(svg).length;
+    toast('SVG editing — ' + np + ' part' + (np === 1 ? '' : 's') + ': click a part (a path, shape or text) to select it, drag it to move, handles resize (Shift keeps proportions), arrows nudge, Shift+click selects several, Tab selects the enclosing group. The toolbar sets fill, stroke, opacity and text, orders, duplicates and deletes. Esc or Done when finished.', 6000);
+    return true;
+  }
+  function svgEnd() {
+    if (!svgEd) return false;
+    if (gdrag) finishSvgDrag(true);
+    var s = svgEd; svgEd = null;
+    s.svg.classList.remove('nbg-svg-editing'); if (s.svg.getAttribute('class') === '') s.svg.removeAttribute('class');
+    document.removeEventListener('pointermove', onSvgHover, true);
+    cancelAnimationFrame(ghoverRaf); hoverEl(null);
+    if (gbox) gbox.hidden = true;
+    if (gmarks) gmarks.hidden = true;
+    syncToolbars(); codeRefresh();
+    return true;
+  }
+  // the selection: whole parts, document order; a group and something inside it never travel together (the group stays)
+  function svgSetSelection(list, primary, quiet) {
+    if (!svgEd) return false;
+    var svg = svgEd.svg, out = [];
+    (list || []).forEach(function (p) { if (p && isSvgPart(p, svg) && out.indexOf(p) < 0) out.push(p); });
+    var nested = out.filter(function (p) { return out.some(function (o) { return o !== p && o.contains(p); }); });
+    if (nested.length) { out = out.filter(function (p) { return nested.indexOf(p) < 0; }); toast(nested.length + ' inner part' + (nested.length === 1 ? '' : 's') + ' left out — its group is selected. Click a member alone to pick it.', 2500); }
+    out.sort(docOrder);
+    svgEd.parts = out;
+    svgEd.part = primary && out.indexOf(primary) >= 0 ? primary : out[out.length - 1] || null;
+    layoutGbox(); layoutSvgTools(); codeFollow();
+    if (!quiet && out.length > 1) toast(out.length + ' parts selected — drag to move them together, handles scale them; the toolbar styles, orders, duplicates and deletes them all. Shift+click adds or removes a part, a plain click picks one alone.', 3000);
+    return out.length > 0;
+  }
+  function svgSelectPart(part, quiet) {
+    if (!svgEd) return false;
+    var ok = svgSetSelection(part ? [part] : [], part, true);
+    if (ok && !quiet) toast(describe(svgEd.part) + ' selected — drag to move, handles resize, arrows nudge, Shift+click adds another part, Tab selects the enclosing group, Delete removes it.', 2500);
+    return ok;
+  }
+  function svgSelectMany(list) { return svgSetSelection(list, null, false); }
+  function svgAddPart(part) { if (!part || !svgEd) return false; var cur = svgSel(); return cur.indexOf(part) >= 0 ? true : svgSetSelection(cur.concat([part]), part, cur.length === 0); }
+  function svgRemoveFromSelection(part) { if (!part || !svgEd) return false; return svgSetSelection(svgSel().filter(function (p) { return p !== part; }), null, true); }
+  function svgTogglePart(part) {   // inside a selected part (a group's member included) it removes that part; elsewhere it adds the part
+    if (!part || !svgEd) return false;
+    var own = null; svgSel().forEach(function (m) { if (!own && (m === part || m.contains(part))) own = m; });
+    return own ? svgRemoveFromSelection(own) : svgAddPart(part);
+  }
+  // Ctrl/Cmd+click: what is inside the smallest part under the pointer — the part a plain click would pick — or, when a
+  // selected group encloses that spot (Tab selected it, or its frame was clicked), the parts inside that group; a part
+  // with nothing inside is picked alone
+  function svgSelectInside(leaf) {
+    if (!svgEd || !leaf) return false;
+    var holder = null;
+    svgSel().forEach(function (m) { if (svgTag(m) === 'g' && m !== leaf && m.contains(leaf) && (!holder || holder.contains(m))) holder = m; });   // the innermost selected group around the spot
+    var target = holder || leaf, kids = svgChildParts(target);
+    if (!kids.length) return svgSelectPart(target, false);
+    var ok = svgSetSelection(kids, kids.indexOf(leaf) >= 0 ? leaf : null, true);
+    if (ok) toast(svgSel().length + ' part' + (svgSel().length === 1 ? '' : 's') + ' inside ' + svgPartLabel(target) + ' selected — Shift+click adds or removes one, a plain click picks one alone.', 2500);
+    return ok;
+  }
+  function svgSelectAll() {   // every top-level part of the SVG (a group counts as one)
+    if (!svgEd) return false;
+    var all = svgChildParts(svgEd.svg);
+    if (!all.length) { toast('No parts in this SVG.', 1500); return false; }
+    var ok = svgSetSelection(all, null, true);
+    if (ok) toast(svgSel().length + ' part' + (svgSel().length === 1 ? '' : 's') + ' selected — every top-level part of the SVG.', 2500);
+    return ok;
+  }
+  function onSvgHover(e) {
+    if (!svgEd || gdrag) return;
+    var x = e.clientX, y = e.clientY, t = e.target;
+    cancelAnimationFrame(ghoverRaf);
+    ghoverRaf = requestAnimationFrame(function () {
+      if (!svgEd) return;
+      var inBox = !!(gbox && t && gbox.contains(t));   // over the selection's frame: the parts underneath still count
+      if (!t || !t.closest || (!inBox && (t.closest(OURS) || !svgEd.svg.contains(t)))) { hoverEl(null); return; }
+      var p = svgLeafAt(x, y, svgEd.svg); hoverEl(p && svgSel().indexOf(p) < 0 ? p : null);
+    });
+  }
+  /* the selection's frame and the per-part marks */
+  function ensureGbox() {
+    if (gbox) return;
+    gmarks = document.createElement('div'); gmarks.id = 'nbg-svg-marks'; gmarks.hidden = true; document.body.appendChild(gmarks);
+    gbox = document.createElement('div'); gbox.id = 'nbg-svg-box'; gbox.hidden = true;
+    HANDLES.forEach(function (h) { var d = document.createElement('div'); d.className = 'nbg-h nbg-h-' + h; d.setAttribute('data-h', h); d.style.cursor = CURSORS[h]; gbox.appendChild(d); });
+    gchip = document.createElement('div'); gchip.className = 'nbg-chip'; gbox.appendChild(gchip);
+    gbox.addEventListener('pointerdown', onSvgPointerDown);
+    gbox.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); });
+    gbox.addEventListener('dblclick', function (e) { e.preventDefault(); e.stopPropagation(); svgFocusText(); });
+    gbox.addEventListener('contextmenu', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var under = underPoint(e.clientX, e.clientY);
+      openMenu(e.clientX, e.clientY, resolveTextTarget(under), resolveShapeTarget(under));
+    });
+    document.body.appendChild(gbox);
+  }
+  function svgFocusText() {   // a double-click on a <text> part: straight to its text field
+    var p = svgSel().length === 1 ? svgPrimary() : null; if (!p || !svgTextNode(p) || !gtools || gtools.hidden) return false;
+    var ti = gtools.querySelector('[data-g=text]'); ti.focus({ preventScroll: true }); ti.select();
+    return true;
+  }
+  function layoutGmarks(ms) {
+    if (!gmarks) return;
+    gmarks.hidden = ms.length < 2;
+    if (gmarks.hidden) return;
+    while (gmarks.children.length > ms.length) gmarks.removeChild(gmarks.lastChild);
+    while (gmarks.children.length < ms.length) gmarks.appendChild(document.createElement('div'));
+    var prim = svgPrimary();
+    ms.forEach(function (m, i) {
+      var r = m.getBoundingClientRect(), d = gmarks.children[i];
+      d.style.left = r.left + 'px'; d.style.top = r.top + 'px'; d.style.width = r.width + 'px'; d.style.height = r.height + 'px';
+      d.classList.toggle('nbg-primary', m === prim);
+    });
+  }
+  function svgUnionParent(ms) { var p = svgPrimary(); return p ? svgBoxToParent(p, unionRect(ms)) : null; }   // the selection's box in the primary part's parent units
+  function layoutGbox() {
+    if (!gbox) return;
+    var ms = svgSel(), p = svgPrimary();
+    gbox.hidden = !p; layoutGmarks(ms); if (!p) return;
+    var multi = ms.length > 1, r = multi ? unionRect(ms) : p.getBoundingClientRect(), b = multi ? svgUnionParent(ms) : svgParentRect(p);
+    gbox.style.left = r.left + 'px'; gbox.style.top = r.top + 'px'; gbox.style.width = r.width + 'px'; gbox.style.height = r.height + 'px';
+    gbox.classList.toggle('nbg-multi', multi);
+    gchip.textContent = (multi ? ms.length + ' parts' : svgPartLabel(p)) + (b ? ' · ' + r3(Math.round(b.w * 10) / 10) + ' × ' + r3(Math.round(b.h * 10) / 10) : '');
+    gchip.classList.toggle('nbg-chip-below', r.top < 40);
+    if (!gdrag) layoutSvgTools();
+  }
+  function onSvgPointerDown(e) {
+    if (!svgEd || !svgSel().length || e.button !== 0) return;
+    e.preventDefault(); e.stopPropagation();
+    var h = e.target.getAttribute && e.target.getAttribute('data-h');
+    if ((e.shiftKey || e.metaKey || e.ctrlKey) && !h) { var lf = svgLeafAt(e.clientX, e.clientY, svgEd.svg); if (e.shiftKey) { if (lf) svgTogglePart(lf); } else svgSelectInside(lf); return; }   // through the frame: Shift+click adds / removes the part underneath, Ctrl/Cmd+click the parts inside the selected group around it
+    startSvgDrag(e, h);
+    try { gbox.setPointerCapture(e.pointerId); } catch (x) { /* ignore */ }
+  }
+  function startSvgDrag(e, h) {
+    var ms = svgMembers(); if (!ms.length) return false;
+    // hit: the part under the pointer when it is not the one selected part (a member of a selected group, a part overlapping the
+    // frame, or one member of several) — a click without a drag picks it alone
+    var hit = h ? null : svgLeafAt(e.clientX, e.clientY, svgEd.svg), one = ms.length === 1 ? ms[0].el : null;
+    gdrag = { members: ms, mode: h ? 'resize' : 'move', h: h, startX: e.clientX, startY: e.clientY, U0: unionRect(ms.map(function (m) { return m.el; })), pre: svgEd.svg.innerHTML, pointerId: e.pointerId, moved: false, hit: hit && hit !== one ? hit : null };
+    return true;
+  }
+  function onSvgPointerMove(e) {
+    var d = gdrag, dx = e.clientX - d.startX, dy = e.clientY - d.startY, U0 = d.U0, U1;
+    if (!d.moved && Math.abs(dx) < 2 && Math.abs(dy) < 2) return;
+    d.moved = true;
+    if (d.mode === 'move') U1 = { left: U0.left + dx, top: U0.top + dy, width: U0.width, height: U0.height };
+    else U1 = resizedBox({ left: U0.left, top: U0.top, width: U0.width, height: U0.height }, d.h, dx, dy, e.shiftKey, 2);
+    svgPlaceMembers(d.members, U0, U1);
+    layoutGbox();
+  }
+  function finishSvgDrag(cancel) {
+    if (!gdrag) return;
+    var d = gdrag; gdrag = null;
+    if (cancel || !d.moved) {
+      if (d.moved) d.members.forEach(function (m) { svgRestore(m.el, m.snap); });
+      if (!cancel && d.hit && d.hit.isConnected && svgEd) { svgSelectPart(d.hit, true); return; }   // a click (no drag) on a part inside or over the frame picks that part alone
+      layoutGbox(); layoutSvgTools(); return;
+    }
+    if (svgEd && track(svgEd.svg, 'html', d.pre)) toast((d.members.length > 1 ? d.members.length + ' parts ' : 'Part ') + (d.mode === 'move' ? 'moved' : 'resized') + ' — ' + changesLabel() + '. Right-click → “Save edited copy” to download the ' + WHOLE + ' with your changes.', 3500);
+    layoutGbox(); layoutSvgTools(); codeRefresh();
+  }
+  /* operations on the selected parts */
+  function svgNudge(dx, dy, resize) {   // dx / dy in SVG units of each part's parent
+    var ms = svgMembers(); if (!ms.length) return false;
+    return svgOp(function () { ms.forEach(function (m) { var b0 = m.b0; svgPlace(m.el, b0, resize ? { x: b0.x, y: b0.y, w: Math.max(0.5, b0.w + dx), h: Math.max(0.5, b0.h + dy) } : { x: b0.x + dx, y: b0.y + dy, w: b0.w, h: b0.h }); }); }) > 0;
+  }
+  function svgGeom(prop, v) {   // 'x' | 'y' | 'w' | 'h' in the parent's units (several parts: the selection's box, scaled from its top-left corner)
+    var ms = svgMembers(), p = svgPrimary(); if (!ms.length || !p || isNaN(v)) return false;
+    if (ms.length === 1) {
+      var b0 = ms[0].b0, b1 = { x: b0.x, y: b0.y, w: b0.w, h: b0.h }; b1[prop] = prop === 'w' || prop === 'h' ? Math.max(0.5, v) : v;
+      return svgOp(function () { svgPlace(ms[0].el, b0, b1); }) > 0;
+    }
+    var U0 = unionRect(ms.map(function (m) { return m.el; })), ub = svgBoxToParent(p, U0); if (!ub) return false;
+    var nb = { x: ub.x, y: ub.y, w: ub.w, h: ub.h }; nb[prop] = prop === 'w' || prop === 'h' ? Math.max(0.5, v) : v;
+    var a = svgFromParent(p, nb.x, nb.y), c = svgFromParent(p, nb.x + nb.w, nb.y + nb.h); if (!a || !c) return false;
+    return svgOp(function () { svgPlaceMembers(ms, U0, { left: Math.min(a.x, c.x), top: Math.min(a.y, c.y), width: Math.abs(c.x - a.x), height: Math.abs(c.y - a.y) }); }) > 0;
+  }
+  function svgPaint(part, name, value) {   // fill / stroke / stroke-width / opacity: the presentation attribute, unless an inline style sets it (then that)
+    var st = part.style;
+    if (value === '' || value === null) { part.removeAttribute(name); if (st && st.getPropertyValue(name)) st.removeProperty(name); }
+    else if (st && st.getPropertyValue(name)) st.setProperty(name, value);
+    else part.setAttribute(name, value);
+    if (part.getAttribute('style') === '') part.removeAttribute('style');
+  }
+  function svgPaintOf(part, name) { return (part.style && part.style.getPropertyValue(name)) || part.getAttribute(name) || ''; }
+  function svgSet(name, value) {
+    var ms = svgSel(); if (!ms.length || !/^(fill|stroke|stroke-width|opacity)$/.test(name)) return false;
+    return svgOp(function () { ms.forEach(function (p) { svgPaint(p, name, value); }); }) > 0;
+  }
+  function svgTextNode(part) {   // the single text run of a <text> (direct, or inside one tspan), else null
+    if (svgTag(part) !== 'text') return null;
+    var runs = [];
+    (function walk(n) { for (var c = n.firstChild; c; c = c.nextSibling) { if (c.nodeType === 3 && c.nodeValue.trim()) runs.push(c); else if (c.nodeType === 1) walk(c); } })(part);
+    return runs.length === 1 ? runs[0] : null;
+  }
+  function svgSetText(value) {
+    var ms = svgSel(), p = ms.length === 1 ? ms[0] : null, n = p && svgTextNode(p); if (!n || typeof value !== 'string') return false;
+    return svgOp(function () { n.nodeValue = value; }) > 0;
+  }
+  function svgOrder(action) {
+    var ms = svgSel(); if (!ms.length || !ORDER_LABEL[action]) return false;
+    var n = svgOp(function () {
+      var list = action === 'front' || action === 'backward' ? ms.slice() : ms.slice().reverse();   // keep the members' own order: front / backward from the first, back / forward from the last
+      list.forEach(function (p) {
+        var par = p.parentNode, sib = Array.prototype.filter.call(par.children, function (c) { return SVG_PART.test(svgTag(c)); }), i = sib.indexOf(p);
+        if (action === 'front') par.appendChild(p);
+        else if (action === 'back') par.insertBefore(p, par.firstChild);
+        else if (action === 'forward') { var nx = i + 1; while (nx < sib.length && ms.indexOf(sib[nx]) >= 0) nx++; if (nx < sib.length) par.insertBefore(p, sib[nx].nextSibling); }
+        else if (action === 'backward') { var pv = i - 1; while (pv >= 0 && ms.indexOf(sib[pv]) >= 0) pv--; if (pv >= 0) par.insertBefore(p, sib[pv]); }
+      });
+    });
+    toast(n ? ORDER_LABEL[action] + ' — ' + changesLabel() + '.' : 'Already at the ' + (action === 'front' || action === 'forward' ? 'front' : 'back') + '.', 2500);
+    return n > 0;
+  }
+  function svgRemovePart() {
+    var ms = svgSel(); if (!ms.length) return false;
+    svgOp(function () { ms.forEach(function (p) { if (p.parentNode) p.parentNode.removeChild(p); }); });
+    svgEd.parts = []; svgEd.part = null; layoutGbox(); layoutSvgTools(); codeFollow();
+    toast((ms.length > 1 ? ms.length + ' parts' : 'Part') + ' removed — ' + changesLabel() + '. Reset SVG brings every part back.', 3000);
+    return true;
+  }
+  function svgDuplicatePart() {
+    var ms = svgSel(); if (!ms.length) return false;
+    var clones = [];
+    svgOp(function () {
+      ms.forEach(function (p) {
+        var c = p.cloneNode(true);
+        [c].concat(Array.prototype.slice.call(c.querySelectorAll('[id]'))).forEach(function (x) { if (x.hasAttribute('id')) x.removeAttribute('id'); });   // ids stay unique
+        p.parentNode.insertBefore(c, p.nextSibling);
+        clones.push(c);
+      });
+    });
+    svgSetSelection(clones, clones[clones.length - 1], true);
+    toast((clones.length > 1 ? clones.length + ' parts duplicated' : 'Part duplicated') + ', on top of the original' + (clones.length > 1 ? 's' : '') + ' — drag the cop' + (clones.length > 1 ? 'ies' : 'y') + ' where ' + (clones.length > 1 ? 'they belong' : 'it belongs') + '. ' + changesLabel() + '.', 3000);
+    return true;
+  }
+  function svgReset(svg) {
+    svg = svg || (svgEd && svgEd.svg);
+    var ed = svg && findEdit(svg, 'html'); if (!ed) { toast('Nothing to reset.', 1500); return false; }
+    apply(svg, 'html', ed.original);
+    edits = edits.filter(function (e) { return e !== ed; }); store();
+    if (svgEd && svgEd.svg === svg) { svgEd.parts = []; svgEd.part = null; layoutGbox(); layoutSvgTools(); codeFollow(); }
+    toast('SVG reset — every part as designed.', 2500);
+    return true;
+  }
+  /* the SVG row of the floating toolbar */
+  function buildSvgTools() {
+    gtools = document.createElement('div');
+    gtools.id = 'nbg-svg-tools'; gtools.className = 'nbg-panel nbg-inrow';
+    gtools.setAttribute('role', 'toolbar');
+    var h = '<span class="nbg-tlabel" data-gnote>SVG</span>';
+    h += '<select data-g="part" title="The parts of this SVG — paths, shapes, text, groups — in drawing order (back to front); pick one to select it alone (Shift+click on the SVG adds more; Tab / Shift+Tab step out / in)"></select>';
+    h += '<button type="button" data-g="all" class="nbg-tquiet" title="Select every top-level part of the SVG (Ctrl/Cmd+A) — Shift+click adds or removes one">All</button>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<label title="Left, in the SVG’s own units (several parts: the selection’s box)">X<input type="number" data-g="x" step="1"></label>';
+    h += '<label title="Top">Y<input type="number" data-g="y" step="1"></label>';
+    h += '<label title="Width (several parts: scales the selection from its top-left corner)">W<input type="number" data-g="w" min="0" step="1"></label>';
+    h += '<label title="Height">H<input type="number" data-g="h" min="0" step="1"></label>';
+    h += '<i class="nbg-tsep"></i>';
+    h += swatches('g="fill" data-v', SVG_PAINTS).replace('<span class="nbg-swatches">', '<span class="nbg-swatches" title="Fill (NBG palette; None = no fill; Default = as designed) — every selected part">');
+    h += '<i class="nbg-tsep"></i>';
+    h += swatches('g="stroke" data-v', SVG_PAINTS).replace('<span class="nbg-swatches">', '<span class="nbg-swatches" title="Stroke colour (NBG palette; None = no stroke; Default = as designed) — every selected part">');
+    h += '<label title="Stroke width (SVG units)">╱<input type="number" data-g="sw" min="0" step="0.5"></label>';
+    h += '<label title="Opacity (%)">◐<input type="number" data-g="opacity" min="0" max="100" step="5"></label>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<input type="text" data-g="text" placeholder="Text" title="The text of the selected <text> part — Enter applies" aria-label="SVG text">';
+    h += '<i class="nbg-tsep"></i><span class="nbg-tlabel">Order</span>';
+    h += '<button type="button" data-go="front" title="Bring to front (Ctrl/Cmd+Shift+])">' + icon('front') + '</button><button type="button" data-go="forward" title="Bring forward one step (Ctrl/Cmd+])">' + icon('forward') + '</button><button type="button" data-go="backward" title="Send backward one step (Ctrl/Cmd+[)">' + icon('backward') + '</button><button type="button" data-go="back" title="Send to back (Ctrl/Cmd+Shift+[)">' + icon('back') + '</button>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<button type="button" data-g="dup" title="Duplicate the selected parts (Ctrl/Cmd+D) — the copies sit on the originals">Duplicate</button>';
+    h += '<button type="button" data-g="del" class="nbg-tquiet" title="Remove the selected parts (Delete)">Delete</button>';
+    h += '<i class="nbg-tsep"></i>';
+    h += '<button type="button" data-g="reset" class="nbg-tquiet" title="Restore the SVG as designed — every part">Reset SVG</button>';
+    h += '<button type="button" data-g="done" class="nbg-tdone" title="Finish (Enter)">Done</button>';
+    h += '<button type="button" data-g="close" class="nbg-tquiet nbg-tclose" title="Hide this toolbar (right-click → Toolbars shows it again)">✕</button>';
+    gtools.innerHTML = h;
+    gtools.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var b = e.target.closest('button'); if (!b) return;
+      e.preventDefault();
+      var g = b.getAttribute('data-g'), go = b.getAttribute('data-go');
+      if (g === 'close') { setToolbarMode('svg', 'off'); return; }
+      if (!svgEd) return;
+      if (go) svgOrder(go);
+      else if (g === 'done') svgEnd();
+      else if (g === 'reset') svgReset();
+      else if (g === 'all') svgSelectAll();
+      else if (g === 'dup') svgDuplicatePart();
+      else if (g === 'del') svgRemovePart();
+      else if (g === 'fill' || g === 'stroke') svgSet(g, b.getAttribute('data-v'));
+    });
+    gtools.addEventListener('change', function (e) {
+      var t = e.target, g = t.getAttribute('data-g');
+      if (!g || !svgEd) return;
+      if (g === 'part') { var pk = svgPartsList[parseInt(t.value, 10)]; if (pk) svgSelectPart(pk, true); return; }
+      if (/^[xywh]$/.test(g)) svgGeom(g, parseFloat(t.value));
+      else if (g === 'sw') svgSet('stroke-width', t.value === '' ? '' : String(Math.max(0, parseFloat(t.value))));
+      else if (g === 'opacity') svgSet('opacity', t.value === '' ? '' : String(Math.max(0, Math.min(100, parseFloat(t.value))) / 100));
+      else if (g === 'text') svgSetText(t.value);
+    });
+    gtools.addEventListener('keydown', function (e) {
+      e.stopPropagation();
+      if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); e.target.dispatchEvent(new Event('change', { bubbles: true })); }
+      if (e.key === 'Escape') { e.preventDefault(); if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') { e.target.blur(); layoutSvgTools(); } else svgEnd(); }
+    });
+    ensureTbar().querySelector('.nbg-tbrows').appendChild(gtools);
+  }
+  function layoutSvgTools() {
+    if (!gtools || gtools.hidden) return;
+    gtools.classList.toggle('nbg-idle', !svgEd);
+    var note = gtools.querySelector('[data-gnote]');
+    if (!svgEd) { note.textContent = 'No SVG in editing'; gtools.classList.remove('nbg-nopart'); placeTbar(); return; }
+    var ms = svgSel(), p = svgPrimary(), multi = ms.length > 1;
+    placeTbar();
+    gtools.classList.toggle('nbg-nopart', !p);
+    svgPartsList = svgParts(svgEd.svg);
+    note.textContent = 'SVG · ' + svgPartsList.length + ' part' + (svgPartsList.length === 1 ? '' : 's') + (multi ? ' · ' + ms.length + ' selected' : '');
+    var sl = gtools.querySelector('[data-g=part]');
+    if (gtools.ownerDocument.activeElement !== sl) {
+      sl.innerHTML = '<option value="-1">' + (multi ? ms.length + ' parts selected…' : p ? 'Parts…' : 'Pick a part…') + '</option>' + svgPartsList.map(function (x, i) { return '<option value="' + i + '"' + (!multi && x === p ? ' selected' : '') + '>' + (ms.indexOf(x) >= 0 ? '✓ ' : '') + new Array(svgDepth(x) + 1).join('› ') + esc(svgPartLabel(x)) + '</option>'; }).join('');
+      if (!p || multi) sl.value = '-1';
+    }
+    var set = function (k, v) { var i = gtools.querySelector('[data-g=' + k + ']'); if (gtools.ownerDocument.activeElement !== i) i.value = v; };
+    var ti = gtools.querySelector('[data-g=text]');
+    if (!p) { ['x', 'y', 'w', 'h', 'sw', 'opacity'].forEach(function (k) { set(k, ''); }); set('text', ''); ti.disabled = true; Array.prototype.forEach.call(gtools.querySelectorAll('.nbg-swatches button'), function (b) { b.classList.remove('nbg-on'); }); return; }
+    var b = multi ? svgUnionParent(ms) : svgParentRect(p);
+    if (b) { set('x', Math.round(b.x * 10) / 10); set('y', Math.round(b.y * 10) / 10); set('w', Math.round(b.w * 10) / 10); set('h', Math.round(b.h * 10) / 10); }
+    ['fill', 'stroke'].forEach(function (k) {   // a swatch is on when every selected part carries that value
+      var cur = svgPaintOf(p, k), norm = cur === 'none' ? 'none' : normColor(cur), same = ms.every(function (m) { var v = svgPaintOf(m, k); return (v === 'none' ? 'none' : normColor(v)) === norm; });
+      Array.prototype.forEach.call(gtools.querySelectorAll('[data-g=' + k + ']'), function (bt) { var v = bt.getAttribute('data-v'); bt.classList.toggle('nbg-on', same && !!cur && (v === 'none' ? norm === 'none' : norm === normColor(v))); });
+    });
+    var sw = svgPaintOf(p, 'stroke-width'); set('sw', sw === '' ? '' : parseFloat(sw));
+    var op = svgPaintOf(p, 'opacity'); set('opacity', op === '' ? '' : Math.round(parseFloat(op) * 100));
+    var tn = multi ? null : svgTextNode(p);
+    ti.disabled = !tn; if (gtools.ownerDocument.activeElement !== ti) ti.value = tn ? tn.nodeValue : '';
+    ti.title = tn ? 'The text of the selected <text> part — Enter applies' : multi ? 'Select one <text> part alone to edit its text' : svgTag(p) === 'text' ? 'This text has several runs — edit its source in the Tree tab' : 'Select a <text> part to edit its text';
+  }
+
   /* ---------- HTML panel: navigable tree + editable source, synced with the visual selection ---------- */
   var code = null, codeTree = null, codeOut = null, codeRaw = null, codeStatus = null, codeTab = 'outline', codeEl = null, codeSlideEl = null, outFilter = '';
   var codeOpen = new Set(), codeClosed = new Set(), rawDirty = false, rawFor = null, hover = null, codeRaf = 0, codeObserver = null;
@@ -1479,13 +2024,13 @@
   function inCode(t) { return !!(code && t && code.contains(t)); }
   function pathKey(el) { var p = pathOf(el); return p ? p.join('/') : ''; }
   function elByKey(key) { return key ? elAt(document, key.split('/').map(Number)) : null; }
-  function cleanClass(el) { return (el.getAttribute('class') || '').split(/\s+/).filter(function (c) { return c && c !== 'nbg-editing'; }).join(' '); }
+  function cleanClass(el) { return (el.getAttribute('class') || '').split(/\s+/).filter(function (c) { return c && c !== 'nbg-editing' && c !== 'nbg-svg-editing'; }).join(' '); }
   // the element's markup as the viewer should see it: without our transient editing attributes
   function cleanOuterHtml(el) {
     var c = el.cloneNode(true), all = [c].concat(Array.prototype.slice.call(c.querySelectorAll('*')));
     all.forEach(function (n) {
       Array.prototype.slice.call(n.attributes).forEach(function (a) { if (TRANSIENT_ATTR.test(a.name)) n.removeAttribute(a.name); });
-      if (n.classList.contains('nbg-editing')) { n.classList.remove('nbg-editing'); if (!n.getAttribute('class')) n.removeAttribute('class'); }
+      if (n.classList.contains('nbg-editing') || n.classList.contains('nbg-svg-editing')) { n.classList.remove('nbg-editing'); n.classList.remove('nbg-svg-editing'); if (!n.getAttribute('class')) n.removeAttribute('class'); }
     });
     return c.outerHTML;
   }
@@ -1499,8 +2044,8 @@
   function esc(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function isEdited(el) { return !!(findEdit(el, 'html') || findEdit(el, 'style') || findEdit(el, 'group') || findEdit(el, 'attrs')); }
   function codeSlide() {   // the slide on screen wins: a followed element whose slide left the screen is dropped
-    var el = codeEl && codeEl.isConnected ? codeEl : (shape ? shape.el : editing ? editing.el : null);
-    if (el && slideOffscreen(el)) { if (!shape && !editing) codeEl = null; el = null; }
+    var el = codeEl && codeEl.isConnected ? codeEl : (shape ? shape.el : editing ? editing.el : svgEd ? svgEd.svg : null);
+    if (el && slideOffscreen(el)) { if (!shape && !editing && !svgEd) codeEl = null; el = null; }
     var s = el ? slideOf(el) : null;
     return s || slideAtPoint(window.innerWidth / 2, window.innerHeight / 2);
   }
@@ -1508,6 +2053,7 @@
     var keys = {};
     sel.forEach(function (m) { keys[pathKey(m)] = true; });
     if (editing) keys[pathKey(editing.el)] = true;
+    if (svgEd) { var gs = svgSel(); if (gs.length) gs.forEach(function (m) { keys[pathKey(m)] = true; }); else keys[pathKey(svgEd.svg)] = true; }
     return keys;
   }
   function contentNodes(el) {
@@ -1553,6 +2099,7 @@
   var KIND_ICON = { img: '▨', text: 'T', box: '▭' };
   function shapeKind(el) { return /^(img|svg|video|canvas|picture)$/i.test(el.tagName) ? 'img' : hasOwnText(el) && !isBoxy(el) ? 'text' : 'box'; }
   function shapeLabel(el) {
+    if (svgTag(el) === 'svg') { var np = svgParts(el).length; return (el.getAttribute('aria-label') || 'SVG') + ' · ' + np + ' part' + (np === 1 ? '' : 's'); }
     if (/^(img|svg|video|canvas|picture)$/i.test(el.tagName)) return el.getAttribute('alt') || el.getAttribute('aria-label') || 'Image';
     var t = hasOwnText(el) ? el.textContent.replace(/\s+/g, ' ').trim() : '';
     if (t) return t.length > 56 ? t.slice(0, 53) + '…' : t;
@@ -1577,7 +2124,7 @@
       '<input type="checkbox" class="nbg-ock" ' + (keys[key] ? 'checked ' : '') + 'aria-label="select" title="Tick to add this shape to the selection, untick to remove it">' +
       '<span class="nbg-ok nbg-ok-' + kind + '" title="' + (kind === 'img' ? 'image' : kind === 'text' ? 'text block' : 'card / panel / block') + '">' + KIND_ICON[kind] + '</span>' +
       '<span class="nbg-ol">' + esc(label) + '</span>' +
-      '<span class="nbg-os">' + Math.round(el.offsetWidth) + '×' + Math.round(el.offsetHeight) + '</span>' +
+      '<span class="nbg-os">' + Math.round(offW(el)) + '×' + Math.round(offH(el)) + '</span>' +
       (g && badges[g] ? '<span class="nbg-og" title="group ' + esc(g) + '">' + badges[g] + '</span>' : '') +
       (backdrop ? '<span class="nbg-og nbg-ob" title="fills the ' + AREA + ' — not part of Select all">backdrop</span>' : '') +
       (isEdited(el) ? ' <span class="nbg-dot" title="edited in this browser">●</span>' : '') + '</div>');
@@ -1613,8 +2160,8 @@
       var ms = menu && menu.querySelector('.nbg-mslide'); if (ms) ms.textContent = codeSlideEl ? unitLabel(codeSlideEl) : '';
     });
   }
-  function codeFollow() {   // the element the panel follows: the primary selection or the text being edited
-    var el = shape ? shape.el : editing ? editing.el : null;
+  function codeFollow() {   // the element the panel follows: the primary selection, the text being edited, or the SVG part
+    var el = shape ? shape.el : editing ? editing.el : svgEd ? (svgPrimary() || svgEd.svg) : null;
     if (el) codeEl = el;
     codeRefresh();
   }
@@ -1659,6 +2206,7 @@
     if (neu.tagName !== el.tagName) return { error: 'Keep the element a <' + el.tagName.toLowerCase() + '> — its type cannot change (use its parent to replace it).' };
     var dropped = sanitise(neu);
     if (editing && editing.el === el) commitEdit();
+    if (svgEd) svgEnd();   // never let the session's outline class into a record
     var preStyle = attrStyle(el), preGroup = groupId(el), preAttrs = attrsOf(el), preHtml = el.innerHTML;
     if (neu.hasAttribute('style')) el.setAttribute('style', neu.getAttribute('style')); else el.removeAttribute('style');
     if (neu.hasAttribute('data-nbg-group')) el.setAttribute('data-nbg-group', neu.getAttribute('data-nbg-group')); else el.removeAttribute('data-nbg-group');
@@ -1780,6 +2328,8 @@
       }
       if (isRoot(el)) return;
       codeEl = el;
+      var svo = svgOwner(el);
+      if (svo && svo !== el) { var pp = el; while (pp && pp !== svo && !SVG_PART.test(svgTag(pp))) pp = pp.parentElement; svgEdit(svo, pp !== svo ? pp : null); codeRefresh(); return; }   // a part of an SVG: edit the SVG with that part selected
       if (e.target.classList.contains('nbg-ock')) { toggleSelection(el); codeRefresh(); return; }            // checkbox: add / remove
       if (e.shiftKey && shape) addToSelection(el); else if ((e.metaKey || e.ctrlKey) && shape) toggleSelection(el); else selectSolo(el, true);
       codeRefresh();
@@ -1829,8 +2379,8 @@
     var t = tab === 'code' ? 'tree' : tab || (codeTab === 'outline' ? 'outline' : 'tree');
     openMenuTab(t);
     if (tab === 'code') setTab('code');
-    // "Show structure / HTML" on an element selects it; opening the panel on its own selects nothing
-    if (el && el === codeEl && !shape && !editing && codeEl.isConnected && !isRoot(codeEl)) selectSolo(codeEl, true);
+    // "Show structure / HTML" on an element selects it (a part of an SVG: SVG editing with that part); opening the panel on its own selects nothing
+    if (el && el === codeEl && !shape && !editing && !(svgEd && svgEd.svg.contains(el)) && codeEl.isConnected && !isRoot(codeEl)) selectSolo(codeEl, true);
     toast('Structure — Outline: tick boxes to select several shapes, click a name to select one; Tree: the HTML elements, with the selected element’s source editable below them (drag the bar between them). The selection is highlighted on the ' + AREA + ' and here. The menu stays pinned while a structure tab is shown.', 5000);
     return true;
   }
@@ -1956,7 +2506,7 @@
     return '';
   }
   function inAi(t) { return !!(ai && t && ai.contains(t)); }
-  function aiTargets() { return sel.length ? sel.slice() : editing ? [editing.el] : []; }   // what "selected element source" and "replace" work on
+  function aiTargets() { return sel.length ? sel.slice() : editing ? [editing.el] : svgEd ? (svgSel().length ? svgSel() : [svgEd.svg]) : []; }   // what "selected element source" and "replace" work on
   function aiSlide() { var t = aiTargets()[0]; return (t && slideOf(t)) || slideAtPoint(window.innerWidth / 2, window.innerHeight / 2); }
   /* image data URIs are large: the sources go out with numbered placeholders, restored when a reply is applied */
   // every data URI of some size — base64 or not, with or without parameters, in HTML attributes or CSS url() — becomes a placeholder
@@ -2634,6 +3184,7 @@
   /* ---------- discard / save ---------- */
   function discardEdits() {
     if (editing) cancelEdit();
+    if (svgEd) svgEnd();
     deselectShape();
     for (var i = edits.length - 1; i >= 0; i--) { var el = elAt(document, edits[i].path); if (el) apply(el, edits[i].kind, edits[i].original); }
     edits = []; store();
@@ -2651,6 +3202,7 @@
   function discardSlideEdits(slide) {
     if (!slide) return 0;
     if (editing && slide.contains(editing.el)) cancelEdit();
+    if (svgEd && slide.contains(svgEd.svg)) svgEnd();
     if (shape && slide.contains(shape.el)) deselectShape();
     var mine = editsIn(slide);
     for (var i = mine.length - 1; i >= 0; i--) { var el = elAt(document, mine[i].path); if (el) apply(el, mine[i].kind, mine[i].original); }
@@ -2668,6 +3220,7 @@
   function onDeckChange() {
     if (busy) return;
     if (editing && slideOffscreen(editing.el)) commitEdit();
+    if (svgEd && slideOffscreen(svgEd.svg)) svgEnd();
     if (shape && slideOffscreen(shape.el)) { deselectShape(); toast('The ' + AREA + ' changed — selection cleared.', 1500); }
     var vis = slideAtPoint(window.innerWidth / 2, window.innerHeight / 2);
     if (vis !== lastSlide) { lastSlide = vis; syncToolbars(); codeRefresh(); }
@@ -2723,7 +3276,7 @@
   }
   function restorePagePrint() { if (!pageStyle) return false; if (pageStyle.parentNode) pageStyle.parentNode.removeChild(pageStyle); pageStyle = null; return true; }
   function prepare(opts) {
-    if (editing) commitEdit(); deselectShape();
+    if (editing) commitEdit(); if (svgEd) svgEnd(); deselectShape();
     if (PAGE_MODE) return preparePagePrint();
     opts = opts || {}; if (!opts.selector) opts.selector = ROOT_SEL;
     return nbgPreparePrintLayout(opts);
@@ -2813,6 +3366,17 @@
     'font:12px/1.4 ' + FONT + ';pointer-events:none}' +
     '#nbg-shape-box .nbg-chip.nbg-chip-below{top:auto;bottom:-30px}' +
     '#nbg-shape-box.nbg-multi{outline-style:dashed}' +
+    '.nbg-svg-editing{outline:2px dashed ' + CYAN + ' !important;outline-offset:4px}' +
+    '#nbg-svg-box{position:fixed;z-index:2147483646;box-sizing:border-box;outline:1.5px solid ' + ACCENT + ';outline-offset:-1px;cursor:move;box-shadow:0 0 0 3px rgba(0,56,65,.12);touch-action:none}' +
+    '#nbg-svg-box .nbg-h{position:absolute;width:9px;height:9px;margin:-5px;background:#fff;border:1.5px solid ' + ACCENT + ';border-radius:2px;box-sizing:border-box;box-shadow:0 1px 3px rgba(10,20,22,.25)}' +
+    '#nbg-svg-box .nbg-h-nw{left:0;top:0}#nbg-svg-box .nbg-h-n{left:50%;top:0}#nbg-svg-box .nbg-h-ne{left:100%;top:0}#nbg-svg-box .nbg-h-e{left:100%;top:50%}' +
+    '#nbg-svg-box .nbg-h-se{left:100%;top:100%}#nbg-svg-box .nbg-h-s{left:50%;top:100%}#nbg-svg-box .nbg-h-sw{left:0;top:100%}#nbg-svg-box .nbg-h-w{left:0;top:50%}' +
+    '#nbg-svg-box .nbg-chip{position:absolute;left:0;top:-30px;white-space:nowrap;padding:3px 8px;border-radius:6px;background:' + ACCENT + ';color:#fff;font:12px/1.4 ' + FONT + ';pointer-events:none}#nbg-svg-box .nbg-chip.nbg-chip-below{top:auto;bottom:-30px}' +
+    '#nbg-svg-box.nbg-multi{outline-style:dashed}#nbg-svg-marks{position:fixed;left:0;top:0;width:0;height:0;z-index:2147483645;pointer-events:none}#nbg-svg-marks[hidden]{display:none!important}' +
+    '#nbg-svg-marks div{position:fixed;box-sizing:border-box;outline:1.5px dashed ' + ACCENT + ';outline-offset:-1px}#nbg-svg-marks div.nbg-primary{outline-style:solid}' +
+    '#nbg-svg-tools input[type=text]{width:130px;height:26px;border:1px solid rgba(0,56,65,.25);border-radius:6px;font:inherit;padding:0 6px;color:inherit;background:#fff}#nbg-svg-tools input[type=text]:disabled{opacity:.4}' +
+    '#nbg-svg-tools select[data-g=part]{max-width:220px}' +
+    '#nbg-svg-tools.nbg-nopart [data-g]:not([data-g=part]):not([data-g=reset]):not([data-g=done]):not([data-g=close]),#nbg-svg-tools.nbg-nopart [data-go]{opacity:.35;pointer-events:none}' +
     '#nbg-sel-marks{position:fixed;left:0;top:0;width:0;height:0;z-index:2147483645;pointer-events:none}' +
     '#nbg-sel-marks div{position:fixed;box-sizing:border-box;outline:1.5px dashed ' + CYAN + ';outline-offset:-1px}' +
     '#nbg-sel-marks div.nbg-primary{outline-style:solid}' +
@@ -2857,13 +3421,15 @@
     '.nbg-ai .nbg-ap{display:flex;align-items:center;gap:4px;padding:3px 4px;border-radius:6px}.nbg-ai .nbg-ap.nbg-on{background:' + CREAM + '}.nbg-ai .nbg-apn{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}' +
     '.nbg-ai .nbg-aped{display:flex;flex-direction:column;gap:4px;border-top:1px solid rgba(0,56,65,.12);padding-top:6px}' +
     '.nbg-ai [hidden]{display:none!important}' +
-    '.nbg-capturing #nbg-tools,.nbg-capturing #nbg-stack-pop,.nbg-capturing #nbg-deck-menu,.nbg-capturing #nbg-deck-toast,.nbg-capturing #nbg-shape-box,.nbg-capturing #nbg-sel-marks,.nbg-capturing #nbg-marquee,.nbg-capturing #nbg-hover,.nbg-capturing .nbg-panel{visibility:hidden!important}.nbg-capturing .nbg-editing{outline:none!important;box-shadow:none!important}' +
+    '.nbg-capturing #nbg-tools,.nbg-capturing #nbg-stack-pop,.nbg-capturing #nbg-deck-menu,.nbg-capturing #nbg-deck-toast,.nbg-capturing #nbg-shape-box,.nbg-capturing #nbg-svg-box,.nbg-capturing #nbg-svg-marks,.nbg-capturing #nbg-sel-marks,.nbg-capturing #nbg-marquee,.nbg-capturing #nbg-hover,.nbg-capturing .nbg-panel{visibility:hidden!important}.nbg-capturing .nbg-editing,.nbg-capturing .nbg-svg-editing{outline:none!important;box-shadow:none!important}' +
     '.nbg-panel{position:fixed;z-index:2147483647;display:flex;align-items:center;gap:2px;padding:4px 6px;background:#fff;color:' + INK + ';' +
     'border:1px solid rgba(0,56,65,.14);border-radius:10px;box-shadow:0 10px 28px rgba(10,20,22,.18),0 2px 6px rgba(10,20,22,.10);font:13px/1 ' + FONT + ';user-select:none;-webkit-user-select:none;max-width:calc(100vw - 16px);flex-wrap:wrap}' +
     '.nbg-panel[hidden]{display:none!important}' +
     '.nbg-panel.nbg-tbar{flex-wrap:nowrap;align-items:stretch;gap:4px;padding:4px 6px 4px 4px}.nbg-tbar .nbg-tbside{display:flex;flex-direction:column;align-items:center;gap:2px;padding:2px 0;border-right:1px solid rgba(0,56,65,.10)}' +
+    '.nbg-tbar .nbg-tbmain{display:flex;flex-direction:column;align-items:stretch;min-width:0}.nbg-tbar .nbg-tbtabs{display:flex;gap:2px;padding:0 2px 3px;margin-bottom:2px;border-bottom:1px solid rgba(0,56,65,.10)}' +
+    '.nbg-tbar .nbg-tbtab{min-width:0;height:22px;line-height:22px;padding:0 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:' + MUTED + ';border-radius:6px}.nbg-tbar .nbg-tbtab.nbg-on{background:' + ACCENT + ';color:#fff}.nbg-tbar .nbg-tbtab.nbg-tbidle:not(.nbg-on){opacity:.45}.nbg-tbar .nbg-tbtab[hidden]{display:none!important}' +
     '.nbg-tbar .nbg-tbrows{display:flex;flex-direction:column;align-items:stretch;gap:2px;min-width:0}.nbg-panel.nbg-inrow{position:static;box-shadow:none;border:0;border-radius:0;max-width:none;padding:2px 2px}' +
-    '.nbg-tbar .nbg-inrow + .nbg-inrow{border-top:1px solid rgba(0,56,65,.10);padding-top:4px}.nbg-tbar .nbg-tbside .nbg-grip{line-height:20px;padding:0 2px}.nbg-tbar .nbg-tbside .nbg-anchor{margin:0;padding:0 3px;line-height:20px;font-size:12px}.nbg-tbar .nbg-tbside .nbg-detach{padding:0 3px;line-height:20px}' +
+    '.nbg-tbar .nbg-tbside .nbg-grip{line-height:20px;padding:0 2px}.nbg-tbar .nbg-tbside .nbg-anchor{margin:0;padding:0 3px;line-height:20px;font-size:12px}.nbg-tbar .nbg-tbside .nbg-detach{padding:0 3px;line-height:20px}' +
     '.nbg-code .nbg-cb::-webkit-scrollbar,.nbg-ai .nbg-ar pre::-webkit-scrollbar{width:10px;height:10px}.nbg-code .nbg-cb::-webkit-scrollbar-track,.nbg-ai .nbg-ar pre::-webkit-scrollbar-track{background:transparent}' +
     '.nbg-code .nbg-cb::-webkit-scrollbar-thumb,.nbg-ai .nbg-ar pre::-webkit-scrollbar-thumb{background:rgba(0,56,65,.28);border-radius:5px;border:2px solid #fff}.nbg-code .nbg-cb::-webkit-scrollbar-thumb:hover{background:rgba(0,56,65,.45)}' +
     '.nbg-code .nbg-cb{scrollbar-width:thin;scrollbar-color:rgba(0,56,65,.35) transparent}' +
@@ -2889,10 +3455,10 @@
     '.nbg-panel .nbg-tclose{margin-left:2px;min-width:24px}.nbg-panel .nbg-tnote:empty{display:none}' +
     '.nbg-panel button svg{display:block;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}' +
     '.nbg-panel button svg .nbg-fill{fill:currentColor;stroke:none}' +
-    '@media print{#nbg-stack-pop,#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-sel-marks,#nbg-marquee,#nbg-hover,.nbg-panel{display:none!important}.nbg-editing{outline:none!important;box-shadow:none!important}}';
+    '@media print{#nbg-stack-pop,#nbg-deck-menu,#nbg-deck-toast,#nbg-shape-box,#nbg-svg-box,#nbg-svg-marks,#nbg-sel-marks,#nbg-marquee,#nbg-hover,.nbg-panel{display:none!important}.nbg-editing,.nbg-svg-editing{outline:none!important;box-shadow:none!important}}';
   document.head.appendChild(style);
 
-  var menu = null, menuTarget = null, menuShape = null, menuStack = [], menuSlide = null, menuPinned = false;   // pinned: stays open after a choice or a click elsewhere, movable by its header, keeps its place
+  var menu = null, menuTarget = null, menuShape = null, menuSvg = null, menuStack = [], menuSlide = null, menuPinned = false;   // menuSvg: the inline SVG under the pointer   // pinned: stays open after a choice or a click elsewhere, movable by its header, keeps its place
   var menuDrag = null, menuTab = 'menu', menuPos = null;   // menuTab: 'menu' (the items) | 'outline' | 'tree' (the structure panel, embedded); menuPos: where a pinned menu was dragged
   var MENU_TABS = [['menu', 'Menu', 'The actions for what is under the pointer, the toolbars, printing and saving'], ['outline', 'Outline', 'The ' + AREA + '’s shapes — tick boxes to select several, click a name to select one'], ['tree', 'Tree', 'The ' + AREA + '’s HTML elements, with the selected element’s source editable below them'], ['ai', 'Assistant', 'Ask an AI model about the ' + AREA + ' or the selection — with a screenshot, the source and a clipboard image, each optional']];
   function inEmbedded(t) { return !!t && ((code && code.contains(t)) || (ai && ai.contains(t))); }   // inside a panel embedded in the menu
@@ -2975,6 +3541,11 @@
       h += item('back', 'Send to back', (inSel && sel.length > 1 ? 'The ' + sel.length + ' selected shapes' : 'This shape') + ' behind everything else here (Ctrl/Cmd+Shift+[).', 'nbg-quiet');
       if (findEdit(menuShape, 'style')) h += item('reset', 'Reset shape', 'Restore this element’s original size, position, order and text formatting.', 'nbg-quiet');
     }
+    if (menuSvg) {
+      var svgOn = !!(svgEd && svgEd.svg === menuSvg), np = svgParts(menuSvg).length;
+      h += item('svg', svgOn ? 'Finish SVG editing' : 'Edit SVG', svgOn ? 'Done with the parts of this SVG (Esc or Enter do the same).' : describe(menuSvg) + ' · ' + np + ' part' + (np === 1 ? '' : 's') + ' — click a part to move, resize, recolour, reorder, duplicate or delete it, or edit its text. Or double-click the selected SVG.');
+      if (findEdit(menuSvg, 'html')) h += item('svgreset', 'Reset SVG', 'Restore every part of this SVG as designed.', 'nbg-quiet');
+    }
     if (menuStack.length > 1) {
       // every shape under the pointer, front-most first: nested parts, their containers, shapes behind
       h += '<div class="nbg-sub">Select at this point · ' + menuStack.length + ' stacked</div>';
@@ -2983,14 +3554,13 @@
         h += item('pick', (el === menuShape ? '● ' : '○ ') + describe(el), rel + (i === menuStack.length - 1 ? ' · outermost' : '') + ' — click selects it alone, Shift+click adds it', 'nbg-pick' + (el === menuShape ? ' nbg-pick-on' : ''));
       });
     }
-    var shown = ['text', 'shape'].filter(toolbarVisible).map(function (k) { return TOOLBAR_NAMES[k]; });
+    var shown = ['text', 'shape', 'svg'].filter(toolbarVisible).map(function (k) { return TOOLBAR_NAMES[k]; });
     h += '<button type="button" data-action="tbfold" class="nbg-sub nbg-subbtn" title="' + (ui.menuFold ? 'Expand the Toolbars section' : 'Collapse the Toolbars section') + '">' + (ui.menuFold ? '▸' : '▾') + ' Toolbars' + (ui.menuFold ? '<span>' + (shown.length ? shown.join(', ') + ' shown' : 'none shown') + '</span>' : '') + '</button>';
-    if (!ui.menuFold) ['text', 'shape'].forEach(function (k) {
+    if (!ui.menuFold) ['text', 'shape', 'svg'].forEach(function (k) {
       var on = toolbarVisible(k), mode = ui[k];
-      h += item('tb-' + k, (on ? '☑ ' : '☐ ') + TOOLBAR_NAMES[k], on ? (mode === 'on' ? 'Shown and pinned — follows the selection. Click to hide it.' : 'Shown with the current selection. Click to hide it (it stays hidden until you show it again).') : (mode === 'off' ? 'Hidden by you. Click to show it and keep it visible.' : k === 'code' ? 'Opens on request (Show structure / Show HTML). Click to show it and keep it visible.' : k === 'ai' ? 'Opens on request (Ask the assistant). Click to show it and keep it visible.' : 'Appears with the selection. Click to show it now and keep it visible.'), 'nbg-pick' + (on ? ' nbg-pick-on' : ''));
+      h += item('tb-' + k, (on ? '☑ ' : '☐ ') + TOOLBAR_NAMES[k] + (on && tbTab === k ? ' · in front' : ''), on ? (tbTab !== k ? 'A tab of the toolbar. Click to bring it to the front.' : mode === 'on' ? 'The tab in front, pinned — follows the selection. Click to hide it.' : 'The tab in front, shown with the current selection. Click to hide it (it stays hidden until you show it again).') : (mode === 'off' ? 'Hidden by you. Click to show it and keep it visible.' : k === 'code' ? 'Opens on request (Show structure / Show HTML). Click to show it and keep it visible.' : k === 'ai' ? 'Opens on request (Ask the assistant). Click to show it and keep it visible.' : 'Appears with the selection. Click to show it now and keep it visible.'), 'nbg-pick' + (on ? ' nbg-pick-on' : ''));
     });
-    if (!ui.menuFold && (ui.text !== 'auto' || ui.shape !== 'auto')) h += item('tb-auto', 'Automatic toolbars', 'Show the text and shape toolbars with the selection again (the default).', 'nbg-quiet');
-    h += item('ai', 'Ask the assistant', 'The Assistant tab: send a request to an AI model with a screenshot of the ' + AREA + ', its source, ' + (menuShape || menuTarget ? 'the source of ' + describe(menuShape || menuTarget) : 'the selected element’s source') + ' and a clipboard image — each optional. The reply is shown, or replaces the selected element (Ctrl/Cmd+Shift+L).', 'nbg-quiet');
+    if (!ui.menuFold && (ui.text !== 'auto' || ui.shape !== 'auto' || ui.svg !== 'auto')) h += item('tb-auto', 'Automatic toolbars', 'Show the text, shape and SVG toolbars with the selection again (the default).', 'nbg-quiet');
     if (PAGE_MODE) h += item('pdf', 'Print / Save as PDF', 'Opens the print dialog — choose “Save as PDF”. The browser paginates the page; backgrounds are kept and the editor’s panels are hidden.');
     else h += item('pdf', 'Export to PDF', 'Opens the print dialog — choose “Save as PDF”. One page per slide, 1920×1080, margins and backgrounds preset.');
     if (edits.length) {
@@ -3028,6 +3598,8 @@
       else if (action === 'selall') { closeMenu(); selectAllIn(slideOf(s)); }
       else if (action === 'front' || action === 'back') { closeMenu(); if (sel.indexOf(s) < 0) setSelection([s], s, { toast: false }); reorder(action); }
       else if (action === 'reset') { closeMenu(); resetShape(s); }
+      else if (action === 'svg') { var sv = menuSvg, lp = lastPoint; closeMenu(); if (svgEd && svgEd.svg === sv) svgEnd(); else svgEdit(sv, lp ? svgLeafAt(lp.x, lp.y, sv) : null); }
+      else if (action === 'svgreset') { var sv2 = menuSvg; closeMenu(); svgReset(sv2); }
       else if (action === 'pick') {
         var el = menuStack[Array.prototype.indexOf.call(menu.querySelectorAll('[data-action=pick]'), b)];
         closeMenu();
@@ -3036,13 +3608,12 @@
       else if (action === 'save') { closeMenu(); saveEditedCopy(); }
       else if (action === 'discard') { closeMenu(); discardEdits(); }
       else if (action === 'discardslide') { var sl = menuSlide; closeMenu(); discardSlideEdits(sl); }
-      else if (action === 'ai') { var ae = s || t; if (ae && !shape && !editing && ae.isConnected) selectSolo(ae, true); openAi(); }
-      else if (/^tb-(text|shape)$/.test(action)) {
+      else if (/^tb-(text|shape|svg)$/.test(action)) {
         var k = action.slice(3); closeMenu();
-        if (toolbarVisible(k)) setToolbarMode(k, 'off');
-        else setToolbarMode(k, 'on');
+        if (toolbarVisible(k) && tbTab === k) setToolbarMode(k, 'off');   // the tab in front: hide it
+        else setToolbarMode(k, 'on');                                      // a tab at the back, or a hidden one: pin it and bring it to the front
       }
-      else if (action === 'tb-auto') { closeMenu(); ui.text = 'auto'; ui.shape = 'auto'; uiSave(); syncToolbars(); toast('Toolbars appear with the selection again.', 2000); }
+      else if (action === 'tb-auto') { closeMenu(); ui.text = 'auto'; ui.shape = 'auto'; ui.svg = 'auto'; uiSave(); syncToolbars(); toast('Toolbars appear with the selection again.', 2000); }
       else closeMenu();
     });
     menu.addEventListener('contextmenu', function (e) { if (!inEmbedded(e.target)) e.preventDefault(); });
@@ -3069,8 +3640,9 @@
     function menuItemEl(b) {
       var a = b && b.getAttribute('data-action');
       if (a === 'pick') return menuStack[Array.prototype.indexOf.call(menu.querySelectorAll('[data-action=pick]'), b)] || null;
-      if (/^(shape|front|back|reset|addsel|rmsel|ai)$/.test(a)) return menuShape || menuTarget;
+      if (/^(shape|front|back|reset|addsel|rmsel)$/.test(a)) return menuShape || menuTarget;
       if (a === 'edit') return menuTarget;
+      if (a === 'svg' || a === 'svgreset') return menuSvg;
       return null;
     }
     // the embedded structure panel outlines its own rows; only the menu's items are handled here
@@ -3085,7 +3657,7 @@
   var stackPop = null;
   function openStackPop(x, y) {
     var stack = menuStack.slice();
-    if (!stack.length && !menuTarget) { closeStackPop(); return false; }
+    if (!stack.length && !menuTarget && !menuSvg) { closeStackPop(); return false; }
     if (!stackPop) {
       stackPop = document.createElement('div'); stackPop.id = 'nbg-stack-pop'; stackPop.setAttribute('role', 'menu'); stackPop.setAttribute('aria-label', 'Select at this point');
       stackPop.addEventListener('click', function (e) {
@@ -3093,6 +3665,7 @@
         e.preventDefault(); e.stopPropagation();
         var a = b.getAttribute('data-action');
         if (a === 'edit') { var t = stackPop.__target; closeStackPop(); if (t) startEdit(t, false); return; }
+        if (a === 'svg') { var sv = stackPop.__svg, pt = stackPop.__pt; closeStackPop(); if (sv) { if (svgEd && svgEd.svg === sv) svgEnd(); else svgEdit(sv, pt ? svgLeafAt(pt.x, pt.y, sv) : null); } return; }
         if (a === 'close') { closeStackPop(); return; }
         var el = stackPop.__stack[Number(b.getAttribute('data-i'))]; closeStackPop();
         if (!el || !el.isConnected) return;
@@ -3109,9 +3682,10 @@
       });
       document.body.appendChild(stackPop);
     }
-    stackPop.__stack = stack; stackPop.__target = menuTarget;
+    stackPop.__stack = stack; stackPop.__target = menuTarget; stackPop.__svg = menuSvg; stackPop.__pt = { x: x, y: y };
     var h = '<div class="nbg-sub">' + (stack.length > 1 ? 'Select at this point · ' + stack.length + ' stacked' : 'At this point') + '</div>';
     if (menuTarget) h += '<button type="button" role="menuitem" data-action="edit"><b>Edit text</b><span>Edit this text in place — Enter applies, Esc cancels.</span></button>';
+    if (menuSvg) h += '<button type="button" role="menuitem" data-action="svg"><b>' + (svgEd && svgEd.svg === menuSvg ? 'Finish SVG editing' : 'Edit SVG') + '</b><span>' + esc(describe(menuSvg)) + ' — its parts: move, resize, recolour, reorder, text.</span></button>';
     stack.forEach(function (el, i) {   // front-most first: nested parts, their containers, shapes behind — as in the menu
       var rel = i === 0 ? 'front-most' : el.contains(stack[i - 1]) ? 'encloses the one above' : 'behind the one above';
       h += '<button type="button" role="menuitem" data-i="' + i + '" class="nbg-pick' + (el === menuShape ? ' nbg-pick-on' : '') + '"><b>' + (el === menuShape ? '● ' : '○ ') + esc(describe(el)) + '</b><span>' + rel + (i === stack.length - 1 ? ' · outermost' : '') + ' — click selects it alone, Shift+click adds it</span></button>';
@@ -3132,6 +3706,7 @@
     ensureMenu();
     closeStackPop();
     menuTarget = target || null; menuShape = shapeTarget || null;
+    menuSvg = svgOwner(underPoint(x, y)) || (shapeTarget && svgTag(shapeTarget) === 'svg' ? shapeTarget : null);
     lastPoint = { x: x, y: y };
     menuSlide = slideAtPoint(x, y);
     menuStack = shapeStack(x, y);
@@ -3173,7 +3748,7 @@
     hoverEl(null);
     hideTabbed(); menuTab = 'menu';
     if (detachedPanel(menu)) reattachPanel('menu');
-    menu.hidden = true; menuTarget = null; menuShape = null; menuStack = []; menuSlide = null;
+    menu.hidden = true; menuTarget = null; menuShape = null; menuSvg = null; menuStack = []; menuSlide = null;
   }
 
   var toastTimer = null;
@@ -3202,7 +3777,10 @@
       if (!menuHeld()) closeMenu();
     }
     if (editing && editing.el.contains(e.target)) return;
-    if (e.target && e.target.closest && e.target.closest('#nbg-shape-box')) return;
+    if (e.target && e.target.closest && e.target.closest('#nbg-shape-box, #nbg-svg-box')) return;
+    // an SVG in editing: the double-click picks the part under the pointer (a <text> part opens its text field)
+    var dsv = svgOwner(e.target);
+    if (dsv && svgEd && svgEd.svg === dsv) { e.preventDefault(); svgSelectPart(svgLeafAt(e.clientX, e.clientY, dsv), true); svgFocusText(); return; }
     var el = resolveTextTarget(e.target);
     if (!el) {   // not text: a shape or an image under the pointer is selected for resize / move
       var sh = resolveShapeTarget(e.target);
@@ -3221,6 +3799,19 @@
     if (editing && !editing.el.contains(e.target) && !inTools(e.target) && !(menu && menu.contains(e.target))) commitEdit();
     // Shift+click / Shift+drag (and Ctrl/Cmd+click with a selection) select shapes instead of deselecting
     lastPoint = { x: e.clientX, y: e.clientY };
+    if (svgEd && !busy) {   // an SVG in editing: a click inside it picks (and starts moving) the part under the pointer; a plain click outside ends the session
+      if (svgEd.svg.contains(e.target)) {
+        if (e.button !== 0) return;
+        e.preventDefault(); e.stopPropagation(); swallowClick = true;
+        var leaf = svgLeafAt(e.clientX, e.clientY, svgEd.svg);
+        if (e.shiftKey) { if (leaf) svgTogglePart(leaf); return; }   // Shift+click adds / removes a part
+        if (e.metaKey || e.ctrlKey) { svgSelectInside(leaf); return; }   // Ctrl/Cmd+click: what is inside the smallest part there (a leaf alone)
+        svgSelectPart(leaf, true);
+        if (svgSel().length) startSvgDrag(e, null);
+        return;
+      }
+      if (e.button !== 2 && !inTools(e.target) && !inCode(e.target) && !inAi(e.target) && !inAiPop(e.target) && !(gbox && gbox.contains(e.target)) && !(menu && menu.contains(e.target)) && !(stackPop && stackPop.contains(e.target))) svgEnd();
+    }
     if (e.button === 0 && !busy && !editing && (e.shiftKey || e.metaKey || e.ctrlKey) && startSelectGesture(e)) return;
     // a right-click keeps the selection (the menu offers "Add to selection"); a plain click outside ends it
     if (shape && e.button !== 2 && !(box && box.contains(e.target)) && !inShapeTools(e.target) && !inCode(e.target) && !inAi(e.target) && !inAiPop(e.target) && !(menu && menu.contains(e.target))) deselectShape();
@@ -3261,6 +3852,30 @@
           var tsel = window.getSelection();   // (not `sel`: that is the shape selection, and var hoists)
           if (tsel && tsel.isCollapsed) { e.preventDefault(); saveSelection(); format({ b: 'bold', i: 'italic', u: 'underline' }[e.key.toLowerCase()]); }
         }
+        return;
+      }
+      if (svgEd && !(menu && !menu.hidden && menu.contains(document.activeElement))) {
+        if (inTools(e.target) || inCode(e.target) || inAi(e.target) || inAiPop(e.target)) return;   // the panels' inputs handle their own keys
+        e.stopPropagation();
+        if (type !== 'keydown') return;
+        var gs = e.shiftKey ? 10 : 1, gm = e.ctrlKey || e.metaKey, gp = svgPrimary(), gmulti = svgSel().length > 1;
+        if (e.key === 'Escape') { e.preventDefault(); if (gdrag) finishSvgDrag(true); else if (gp) svgSelectPart(null, true); else svgEnd(); }
+        else if (gm && (e.code === 'KeyA' || /^a$/i.test(e.key))) { e.preventDefault(); svgSelectAll(); }
+        else if (e.key === 'Tab' && gmulti) { e.preventDefault(); toast('Tab / Shift+Tab step through the group of a single selected part.', 1500); }
+        else if (e.key === 'Enter') { e.preventDefault(); svgEnd(); }
+        else if (e.key === 'Tab' && !e.shiftKey) { e.preventDefault(); var gg = gp && svgParentPart(gp); if (gg) { svgSelectPart(gg, true); toast('Enclosing group selected: ' + svgPartLabel(gg) + ' — Shift+Tab goes back in.', 2000); } else toast('No enclosing group.', 1500); }
+        else if (e.key === 'Tab') { e.preventDefault(); var gk = gp ? svgChildParts(gp)[0] : svgParts(svgEd.svg)[0]; if (gk) { svgSelectPart(gk, true); toast('Inner part selected: ' + svgPartLabel(gk) + ' — Tab goes back out.', 2000); } else toast('No part inside this one.', 1500); }
+        else if ((e.key === 'Delete' || e.key === 'Backspace') && gp) { e.preventDefault(); svgRemovePart(); }
+        else if (gm && (e.code === 'KeyD' || /^d$/i.test(e.key)) && gp) { e.preventDefault(); svgDuplicatePart(); }
+        else if (gm && (e.code === 'BracketRight' || e.key === ']' || e.key === '}')) { e.preventDefault(); svgOrder(e.shiftKey ? 'front' : 'forward'); }
+        else if (gm && (e.code === 'BracketLeft' || e.key === '[' || e.key === '{')) { e.preventDefault(); svgOrder(e.shiftKey ? 'back' : 'backward'); }
+        else if (gm && e.shiftKey && (e.code === 'KeyH' || /^h$/i.test(e.key))) { e.preventDefault(); if (codeIsOpen()) closeCode(); else openCode(gp || svgEd.svg); }
+        else if (gm && e.shiftKey && (e.code === 'KeyO' || /^o$/i.test(e.key))) { e.preventDefault(); if (codeIsOpen() && codeTab === 'outline') closeCode(); else openCode(gp || svgEd.svg, 'outline'); }
+        else if (gm && e.shiftKey && (e.code === 'KeyL' || /^l$/i.test(e.key))) { e.preventDefault(); if (aiIsOpen()) closeAi(); else openAi(); }
+        else if (e.key === 'ArrowLeft' && gp) { e.preventDefault(); svgNudge(-gs, 0, e.altKey); }
+        else if (e.key === 'ArrowRight' && gp) { e.preventDefault(); svgNudge(gs, 0, e.altKey); }
+        else if (e.key === 'ArrowUp' && gp) { e.preventDefault(); svgNudge(0, -gs, e.altKey); }
+        else if (e.key === 'ArrowDown' && gp) { e.preventDefault(); svgNudge(0, gs, e.altKey); }
         return;
       }
       if (shape && !(menu && !menu.hidden && menu.contains(document.activeElement))) {
@@ -3327,9 +3942,16 @@
       selectAll: function (slide) { return selectAllIn(slide || null); }, deselect: deselectShape,
       selected: function () { return shape ? shape.el : null; }, selection: function () { return sel.slice(); }, reset: resetShape,
       align: alignSelection, distribute: distributeSelection, order: reorder, group: groupSelection, ungroup: ungroupSelection,
-      groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes,
+      groupOf: groupId, shapesOf: slideShapes, stackAt: shapeStack, enclosing: ancestorShapes, inside: childShapes, selectInside: function (el) { return selectInside(0, 0, el); },
     },
-    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { if (k === 'code' || k === 'ai') k = 'menu'; if (k === 'text' || k === 'shape') k = 'tools'; return isDetached(k) ? detached[k] : null; } },
+    svg: {
+      edit: svgEdit, end: svgEnd, isEditing: function () { return !!svgEd; }, target: function () { return svgEd ? svgEd.svg : null; },
+      part: svgPrimary, selection: svgSel, select: function (p) { return svgSelectPart(p, true); }, selectMany: svgSelectMany, add: svgAddPart, remove: svgRemoveFromSelection, toggle: svgTogglePart, selectAll: svgSelectAll, selectInside: svgSelectInside,
+      parts: svgParts, partAt: function (x, y) { return svgEd ? svgLeafAt(x, y, svgEd.svg) : null; },
+      set: svgSet, text: svgSetText, geom: svgGeom, nudge: svgNudge, order: svgOrder, remove: svgRemovePart, duplicate: svgDuplicatePart, reset: svgReset,
+      box: svgParentRect, ownerOf: svgOwner,
+    },
+    toolbars: { mode: function (k) { return ui[k]; }, set: setToolbarMode, visible: toolbarVisible, sync: syncToolbars, tab: function (k) { if (k !== undefined) setTbTab(k); return tbTab; }, applies: tbApplies, names: TOOLBAR_NAMES, fold: function (k, on) { if (on !== undefined) setFold(k, on); return !!ui.fold[k]; }, detach: detachPanel, reattach: reattachPanel, detached: function (k) { if (k === 'code' || k === 'ai') k = 'menu'; if (k === 'text' || k === 'shape') k = 'tools'; return isDetached(k) ? detached[k] : null; } },
     picker: { isOpen: stackPopOpen, close: closeStackPop },
     menu: { open: function (x, y) { openMenu(x === undefined ? window.innerWidth / 2 : x, y === undefined ? window.innerHeight / 2 : y, null, null); return true; }, close: function () { closeMenu(true); return true; }, isOpen: function () { return !!(menu && !menu.hidden); }, tab: function (t) { if (t !== undefined) setMenuTab(t); return menuTab; }, pinned: function (on) { if (on !== undefined && menu) { menuPinned = !!on; if (!menu.hidden) refreshMenu(); } return menuPinned; }, held: menuHeld, detach: function (w) { return detachPanel('menu', w); }, reattach: function () { return reattachPanel('menu'); } },
     ai: {
