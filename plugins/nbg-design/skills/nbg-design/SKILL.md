@@ -1,11 +1,11 @@
 ---
 name: nbg-design
-description: Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu for in-place text editing with a formatting toolbar, shape resize/move, editing of the parts of inline SVGs, an AI assistant panel, "Export to PDF" and "Save edited copy", plus a per-deck rebuild script that re-embeds newer versions of those editing tools), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+description: Use when creating presentations in a design system inspired by the brand image of the National Bank of Greece (NBG), HTML slides (with a built-in right-click menu for in-place text editing with a formatting toolbar, shape resize/move, editing of the parts of inline SVGs, an AI assistant panel, "Export to PDF" and "Save edited copy", plus a per-deck rebuild script that re-embeds newer versions of those editing tools), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG-inspired presentation design system, templates, logos, photography, screenshots, and guardrails.
 ---
 
 # NBG Design
 
-This skill packages the NBG Presentation Design System as a self-contained skill so it can be used from any working directory. This file is the single source of the skill's behaviour, defaults, asset list and guardrails; there is no separate configuration file to read.
+This skill packages a presentation design system inspired by the brand image of the National Bank of Greece (NBG) as a self-contained skill so it can be used from any working directory. This file is the single source of the skill's behaviour, defaults, asset list and guardrails; there is no separate configuration file to read.
 
 ## First step when this skill is used
 
@@ -47,7 +47,7 @@ Facts about the bundled system (source: `NBG-Design/NBG Design System.html`):
 
 | Item | Value |
 | --- | --- |
-| Brand | National Bank of Greece — *NBG Presentation Design System* v1.0 |
+| Brand | Inspired by the brand image of the National Bank of Greece (NBG); bundled reference *NBG Presentation Design System* v1.0 |
 | Audience | Internal presentations |
 | Format | 16:9, 1920×1080 artboard; distilled from a 205-slide master deck |
 | Typography | Aptos for everything, with a system fallback when Aptos is absent; never swap the deck's font stack |
@@ -128,7 +128,7 @@ Technology set (generated 2026-09, teal-and-cream palette, no text or logos; thr
 
 ## Design-system rules
 
-- Use the NBG Presentation Design System; do not invent a parallel brand or visual system.
+- Use the bundled NBG-inspired presentation design system; do not invent a parallel brand or visual system.
 - Preserve the NBG 16:9 / 1920×1080 internal slide composition.
 - Use the NBG teal-led palette, quiet neutrals, generous whitespace, clear hierarchy, and restrained emphasis.
 - Use NBG logos and bundled photography from `NBG-Design/assets/`. The NBG logo must always be the bundled lockup image — never a text label, initials, a colored square/box, or any CSS/SVG re-creation. See "Logo rendering (MANDATORY)".
@@ -226,7 +226,7 @@ Before delivering HTML, verify: (a) every `<img>`/`background-image` value start
 
 ## In-deck right-click menu (text editing & formatting, shape resizing, PDF export)
 
-Every delivered HTML deck carries a self-contained right-click menu, inlined by `scripts/add-deck-menu.mjs` (NBG-styled: white panel, teal accent rule, Aptos stack; Escape or a click outside closes it; right-clicking a link or form field keeps the browser's native menu; 📌 pins it — it then stays open, keeps its place, and can be dragged by its header; ⧉ detaches the whole menu, structure tabs included, into a window of its own. While the menu is detached, or open on a panel tab, a right-click on the slide opens a compact **picker** at the pointer instead: the same *Select at this point* hierarchy — front-most first, containers and shapes behind — plus *Edit text*; a click selects, Shift+click adds, Esc closes it). It adds ~150 KB and lives outside the slides, so it — and the selection frame and toolbars — never appears in the slide area of screenshots, in PDFs, or in the print layout.
+Every delivered HTML deck carries a self-contained right-click menu, inlined by `scripts/add-deck-menu.mjs` (NBG-inspired: white panel, teal accent rule, Aptos stack; Escape or a click outside closes it; right-clicking a link or form field keeps the browser's native menu; 📌 pins it — it then stays open, keeps its place, and can be dragged by its header; ⧉ detaches the whole menu, structure tabs included, into a window of its own. While the menu is detached, or open on a panel tab, a right-click on the slide opens a compact **picker** at the pointer instead: the same *Select at this point* hierarchy — front-most first, containers and shapes behind — plus *Edit text*; a click selects, Shift+click adds, Esc closes it). It adds ~150 KB and lives outside the slides, so it — and the selection frame and toolbars — never appears in the slide area of screenshots, in PDFs, or in the print layout.
 
 - **Edit text** — offered when the right-click landed on text; **double-clicking any text on a slide does the same**. The element (the whole text block, so accent spans inside a title stay intact) becomes editable in place with a teal outline: typing, Backspace, Shift+Enter for a line break, Ctrl/Cmd+Z; **Enter or a click outside applies, Esc cancels**. Paste and drop insert plain text, and anything the browser wraps around typed text — other than the toolbar's own bold/italic/underline/strike tags — is unwrapped when the edit is applied. Deck keyboard shortcuts (arrows, space) are suppressed while editing.
 - **One floating toolbar with three tabs** — **Text** (formatting), **Shape** (shape & arrange rows) and **SVG** (parts) share a single panel with one grip, one ⚓ and one ⧉ in a side strip; one tab's row shows at a time. The tab of the editor in use comes to the front on its own (text being edited or a selection of text blocks → Text; any other selection → Shape; an SVG in editing → SVG); a tab the viewer clicks stays in front until another editor takes over; a tab whose editor has nothing to work on is dimmed but opens (its row idle). A row's ✕ hides its tab; the menu's *Toolbars* section ticks the tabs, brings one to the front (pinned) or hides the one in front. The panel floats next to the selection and can be dragged anywhere by its grip. A dragged toolbar is **anchored**: it opens at that spot from then on (remembered per deck in the browser) and shows ⚓ next to its grip; click ⚓ (or double-click the grip) to release it, and it follows the selection again. ⧉ detaches the whole toolbar into a window of its own.

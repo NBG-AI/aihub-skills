@@ -1,10 +1,10 @@
 # nbg-design
 
-Use when creating National Bank of Greece (NBG) styled presentations, HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, an AI assistant panel, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG Presentation Design System, templates, logos, photography, screenshots, and guardrails.
+Use when creating presentations in a design system inspired by the brand image of the National Bank of Greece (NBG), HTML slides (with a built-in right-click menu: in-place text editing with a formatting toolbar, shape resize/move with a shape toolbar, multi-selection with align / distribute / order / group, an AI assistant panel, "Export to PDF", "Save edited copy"), slide specifications, PDF exports of HTML decks (one page per slide, aesthetics preserved) — all on the bundled NBG-inspired presentation design system, templates, logos, photography, screenshots, and guardrails.
 
 ## Overview
 
-This skill packages the NBG Presentation Design System as a user-level Pi skill so it can be used from any working directory.
+This skill packages a presentation design system inspired by the brand image of the National Bank of Greece (NBG) as a user-level Pi skill so it can be used from any working directory.
 
 Output formats: `html` (default, fully self-contained), `pdf` (exported from the HTML deck by the bundled
 `scripts/export-pdf.mjs` — one page per slide at the 1920×1080 artboard, vector text, backgrounds and

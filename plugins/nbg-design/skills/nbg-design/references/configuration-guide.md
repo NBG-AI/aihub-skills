@@ -71,11 +71,11 @@ Follow these steps on a new machine or after moving the project to a new folder.
    - Confirm the files listed in the validation checklist below exist from the repository root.
 5. **Run Pi with the portable context file**
    ```bash
-   pi @config/pi-agent-nbg-design.yaml "Create a presentation about <topic> using the NBG design system."
+   pi @config/pi-agent-nbg-design.yaml "Create a presentation about <topic> using the NBG-inspired design system."
    ```
 6. **For one-shot outline/spec generation**
    ```bash
-   pi -p @config/pi-agent-nbg-design.yaml "Create a presentation outline about <topic> using the NBG design system."
+   pi -p @config/pi-agent-nbg-design.yaml "Create a presentation outline about <topic> using the NBG-inspired design system."
    ```
 7. **For screenshot automation, supply local browser path explicitly**
    - Use the command template from `config/pi-agent-nbg-design.yaml`.

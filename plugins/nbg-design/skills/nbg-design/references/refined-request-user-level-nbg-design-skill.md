@@ -25,9 +25,9 @@ The downstream work should package the project’s NBG presentation context, rul
   - `/Users/giorgosmarinos/.pi/agent/skills/nbg-design/`
 - Create or update a Pi skill whose human-facing name is **"NBG Design"** and whose filesystem/metadata slug is likely `nbg-design`.
 - Copy all files, data, and content required for the skill to work independently from the project folder into the user-level skill folder or its subfolders.
-- Include a `SKILL.md` file in the user-level skill folder with valid Pi skill frontmatter and clear instructions for using the NBG design system.
+- Include a `SKILL.md` file in the user-level skill folder with valid Pi skill frontmatter and clear instructions for using the NBG-inspired design system.
 - Ensure the skill instructions preserve the existing project behavior and guardrails, including:
-  - use the NBG presentation design system and assets rather than inventing a parallel design system;
+  - use the NBG-inspired presentation design system and assets rather than inventing a parallel design system;
   - inspect the bundled design-system documentation/templates before generating final slide output;
   - default unspecified deck language to English (`en`), as already documented in the project exception log;
   - default unspecified final output format to HTML (`html`), as already documented in the project exception log;

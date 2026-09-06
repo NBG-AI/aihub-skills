@@ -5,7 +5,7 @@
 ## Pi Agent NBG Presentation Configuration
 
 ### Function
-Provide a reusable YAML context/config bundle that Pi Agent can read before creating presentation content or slide specifications using the local NBG design system.
+Provide a reusable YAML context/config bundle that Pi Agent can read before creating presentation content or slide specifications using the local NBG-inspired design system.
 
 ### Configuration File
 - `config/pi-agent-nbg-design.yaml`
@@ -29,14 +29,14 @@ Run from the repository root because Pi resolves relative `@file` paths against 
 
 ```bash
 cd /path/to/nbg-theme-agent
-pi @config/pi-agent-nbg-design.yaml "Create a presentation about <topic> using the NBG design system."
+pi @config/pi-agent-nbg-design.yaml "Create a presentation about <topic> using the NBG-inspired design system."
 ```
 
 For one-shot outline/spec generation:
 
 ```bash
 cd /path/to/nbg-theme-agent
-pi -p @config/pi-agent-nbg-design.yaml "Create a presentation outline about <topic> using the NBG design system."
+pi -p @config/pi-agent-nbg-design.yaml "Create a presentation outline about <topic> using the NBG-inspired design system."
 ```
 
 Notes:
@@ -47,7 +47,7 @@ Notes:
 ## Sofia Voice Agent Automation Presentation Page
 
 ### Function
-Provide a single Greek NBG-styled HTML presentation page that summarizes the top automation opportunity areas for Sofia's Voice Agent using the supplied top-10 call-category data.
+Provide a single Greek NBG-inspired HTML presentation page that summarizes the top automation opportunity areas for Sofia's Voice Agent using the supplied top-10 call-category data.
 
 ### Presentation File
 - `presentations/sofia-voice-agent-automation-areas.html`
@@ -66,7 +66,7 @@ Provide a single Greek NBG-styled HTML presentation page that summarizes the top
 ## Voice Agent Call Categories Opportunity Slide
 
 ### Function
-Provide a single English NBG-styled executive slide that communicates the voice-agent serviceable opportunity from 25,000 daily calls and the staged 2026 / Q1 2027 adoption target.
+Provide a single English NBG-inspired executive slide that communicates the voice-agent serviceable opportunity from 25,000 daily calls and the staged 2026 / Q1 2027 adoption target.
 
 ### Presentation Files
 - HTML source of truth: `presentations/voice-agent-call-categories-slide.html`
@@ -162,7 +162,7 @@ Let anyone who receives the HTML deck (a) edit any text on a slide in place — 
 ### Functional Requirements
 - Add the menu to every delivered HTML deck after `embed-assets.mjs` and before `verify-deck.mjs --strict`; the strict gate requires it unless the user declined it (`--no-deck-menu`) and warns on the older PDF-only block.
 - Keep the deck fully self-contained: one inline `<script id="nbg-deck-menu-script" data-nbg-deck-menu="<version>">`, no external references; re-running upgrades an older block.
-- Right-click (except on links/form fields) shows an NBG-styled menu: *Edit text* when the click landed on text, *Export to PDF*, and — once edits exist — *Save edited copy* and *Discard edits*, plus *Cancel*; Escape or a click outside closes it; deck keyboard shortcuts stay suppressed while it is open.
+- Right-click (except on links/form fields) shows an NBG-inspired menu: *Edit text* when the click landed on text, *Export to PDF*, and — once edits exist — *Save edited copy* and *Discard edits*, plus *Cancel*; Escape or a click outside closes it; deck keyboard shortcuts stay suppressed while it is open.
 - Text editing: double-click any text on a slide or use *Edit text*; the whole text block (inline accent spans intact) becomes `contenteditable` with a teal outline; Enter or a click outside applies, Esc cancels, Shift+Enter inserts a line break, Ctrl/Cmd+Z undoes; formatting shortcuts are blocked, paste/drop insert plain text, and every element the browser wraps around typed text (other than `<br>`) is unwrapped on commit; the element's CSS, `white-space` and box do not change while editing; deck shortcuts are suppressed.
 - Formatting toolbar while editing (draggable by its grip): every control applies to the selected text when there is a selection and to the whole block otherwise — Bold / Italic / Underline / Strikethrough (semantic tags on a run; un-bold spans kept), A− / A+ and an exact px size, font family limited to the design system's stacks, text colour limited to the NBG palette (on a run: exactly the selected text wrapped in a styled span; on the block: inline style with line-height kept proportional when fixed in px), alignment (block), Clear (selection: tags and spans removed; block: back to the authored inline style), Done; shortcuts Ctrl/Cmd+B/I/U and Ctrl/Cmd+Shift+> / <; block formatting is recorded as a `style` edit, selection spans travel with the text edit, Esc restores both.
 - Shape toolbar while a shape is selected (draggable by its grip): X / Y / W / H fields, fill (NBG palette, transparent, Default), border (none, 1–6 px, palette colour), corner radius, opacity, shadow (none, soft, strong, Default), Reset, Done — all inline style on the element, recorded in its `style` edit.
